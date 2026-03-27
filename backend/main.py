@@ -170,6 +170,18 @@ async def health():
     }
 
 
+@app.get("/api/llm-status")
+async def llm_status():
+    """Check if a local LLM is available via Ollama."""
+    import sys
+    import os
+    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+    from rag_assistant.llm_config import LLMFactory
+    
+    status = LLMFactory.check_ollama_available()
+    return status
+
+
 @app.get("/api/logs")
 async def get_logs():
     """Retrieve backend logs."""

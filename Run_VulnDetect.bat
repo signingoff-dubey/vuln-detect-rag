@@ -12,17 +12,25 @@ echo.
 echo [*] Checking for Python...
 where python >nul 2>nul
 if %ERRORLEVEL% neq 0 (
-    echo [ERROR] Python is not installed or not in PATH. Please install Python 3.10+
-    pause
-    exit /b 1
+    echo [WARNING] Python is not installed or not in PATH. Please install Python 3.10+
 )
 
 echo [*] Checking for Node.js (npm)...
 where npm >nul 2>nul
 if %ERRORLEVEL% neq 0 (
-    echo [ERROR] Node.js is not installed or not in PATH. Please install Node.js 18+
-    pause
-    exit /b 1
+    echo [WARNING] Node.js is not installed or not in PATH. Please install Node.js 18+
+)
+
+echo [*] Checking for Ollama...
+where ollama >nul 2>nul
+if %ERRORLEVEL% neq 0 (
+    echo [WARNING] Ollama is not installed. AI features will be disabled.
+    echo Please install Ollama from https://ollama.com/
+    echo.
+) else (
+    echo [*] Ensuring Ollama model qwen2.5-coder:7b is downloaded...
+    echo Note: This may take a while if downloading for the first time.
+    call ollama run qwen2.5-coder:7b "/bye" >nul 2>nul
 )
 
 echo.

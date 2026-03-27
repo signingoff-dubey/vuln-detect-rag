@@ -87,8 +87,9 @@ export default function ChatPanel({ messages, onSend, loading }) {
             <div className="w-8 h-8 bg-gradient-to-br from-purple-500 to-blue-500 rounded-lg flex items-center justify-center">
               <Bot className="w-4 h-4 text-white" />
             </div>
-            <div className="bg-dark-800 border border-dark-700 rounded-lg px-4 py-3">
+            <div className="bg-dark-800 border border-dark-700 rounded-lg px-4 py-3 flex items-center gap-3">
               <Loader2 className="w-4 h-4 animate-spin text-dark-400" />
+              <span className="text-sm text-dark-400">Generating response... (Local LLMs may take 30-60s)</span>
             </div>
           </div>
         )}

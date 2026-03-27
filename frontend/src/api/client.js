@@ -2,7 +2,7 @@ import axios from 'axios'
 
 const api = axios.create({
   baseURL: '/api',
-  timeout: 30000,
+  timeout: 300000,
   headers: { 'Content-Type': 'application/json' },
 })
 
@@ -50,6 +50,9 @@ export const getCVEStats = () => api.get('/cve/stats/severity')
 export const getFavorites = () => api.get('/favorites')
 export const addFavorite = (target, label) => api.post('/favorites', null, { params: { target, label } })
 export const deleteFavorite = (id) => api.delete(`/favorites/${id}`)
+
+// LLM Status
+export const getLLMStatus = () => api.get('/llm-status')
 
 export default api
 

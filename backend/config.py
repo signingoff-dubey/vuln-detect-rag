@@ -14,12 +14,11 @@ class Settings(BaseSettings):
     CHROMA_PERSIST_DIR: str = "./data/chroma"
     CHROMA_COLLECTION: str = "cve_knowledge"
 
-    # OpenAI
-    OPENAI_API_KEY: str = ""
-    OPENAI_MODEL: str = "gpt-4o-mini"
-    EMBEDDING_MODEL: str = "text-embedding-3-small"
+    # Ollama Local LLM
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
+    OLLAMA_MODEL: str = "qwen2.5-coder:7b"
 
-    # Fallback embedding (local)
+    # Embedding (local)
     USE_LOCAL_EMBEDDINGS: bool = True
     LOCAL_EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
 

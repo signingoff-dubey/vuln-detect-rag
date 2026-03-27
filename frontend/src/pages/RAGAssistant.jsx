@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Bot, RefreshCw, Database, MessageSquare, Trash2 } from 'lucide-react'
-import { chatRAG, getChatHistory, listSessions, deleteSession, getCVEStats } from '../api/client'
+import { Bot, RefreshCw, Database, MessageSquare, Trash2, Cpu, AlertTriangle } from 'lucide-react'
+import { chatRAG, getChatHistory, listSessions, deleteSession, getCVEStats, getLLMStatus } from '../api/client'
 import ChatPanel from '../components/ChatPanel'
 
 export default function RAGAssistant() {
@@ -9,11 +9,23 @@ export default function RAGAssistant() {
   const [sessionId, setSessionId] = useState(`session_${Date.now()}`)
   const [sessions, setSessions] = useState([])
   const [cveCount, setCveCount] = useState(0)
+  const [llmStatus, setLlmStatus] = useState(null)
 
   useEffect(() => {
     loadSessions()
     loadCVECount()
+    loadLLMStatus()
   }, [])
+
+  const loadLLMStatus = async () => {
+    try {
+      const { data } = await getLLMStatus()
+      setLlmStatus(data)
+    } catch (err) {
+      console.error(err)
+      setLlmStatus({ available: false, model: '', provider: 'ollama', models: [] })
+    }
+  }
 
   const loadCVECount = async () => {
     try {
@@ -110,6 +122,36 @@ export default function RAGAssistant() {
         </button>
       </div>
 
+      {/* LLM Status Banner */}
+      {llmStatus && (
+        <div className={`mb-4 px-4 py-3 rounded-lg border flex items-center gap-3 ${
+          llmStatus.available
+            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+            : 'bg-red-500/10 border-red-500/30 text-red-400'
+        }`}>
+          {llmStatus.available ? (
+            <>
+              <Cpu className="w-5 h-5 flex-shrink-0" />
+              <div className="min-w-0">
+                <span className="font-medium">Local LLM Active: </span>
+                <span className="font-mono text-sm">{llmStatus.model}</span>
+                <span className="text-xs ml-2 opacity-70">via Ollama</span>
+              </div>
+            </>
+          ) : (
+            <>
+              <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+              <div className="min-w-0">
+                <span className="font-medium">No local LLM detected — </span>
+                <span className="text-sm opacity-80">
+                  Install Ollama and run <code className="bg-dark-800 px-1.5 py-0.5 rounded text-xs font-mono">ollama pull qwen2.5-coder:7b</code> for AI-powered answers
+                </span>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       <div className="flex gap-4 flex-1 min-h-0">
         {/* Session History Sidebar */}
         {sessions.length > 0 && (
@@ -157,8 +199,12 @@ export default function RAGAssistant() {
           <span>Knowledge base: {cveCount} CVEs indexed</span>
         </div>
         <div className="flex items-center gap-1">
-          <Bot className="w-3 h-3" />
-          <span>RAG with ChromaDB + LangChain</span>
+          <Cpu className="w-3 h-3" />
+          <span>
+            {llmStatus?.available
+              ? `RAG with ChromaDB + ${llmStatus.model} (Ollama)`
+              : 'RAG with ChromaDB (no LLM — fallback mode)'}
+          </span>
         </div>
       </div>
     </div>
