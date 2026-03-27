@@ -50,7 +50,7 @@ async def search_cves(
     query = db.query(CVEEntryDB)
     if q:
         escaped_q = _escape_like(q)
-        query = query.filter(CVEEntryDB.description.ilike(f"%{escaped_q}%"))
+        query = query.filter(CVEEntryDB.description.ilike(f"%{escaped_q}%", escape="\\"))
     if severity:
         sev = severity.upper()
         if sev not in VALID_SEVERITIES:

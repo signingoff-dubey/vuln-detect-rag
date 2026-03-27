@@ -30,6 +30,7 @@ export const listScans = () => api.get('/scans')
 export const deleteScan = (id) => api.delete(`/scans/${id}`)
 export const exportScan = (id, format) => api.get(`/scans/${id}/export?format=${format}`, { responseType: 'blob' })
 export const getStats = () => api.get('/stats')
+export const getBackendLogs = () => api.get('/logs')
 
 // RAG
 export const chatRAG = (message, sessionId) => api.post('/rag/chat', { message, session_id: sessionId })

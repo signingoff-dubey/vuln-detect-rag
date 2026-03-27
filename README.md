@@ -1,6 +1,6 @@
 # Centralized Vulnerability Detection & Intelligent Query (RAG)
 
-![Version](https://img.shields.io/badge/version-v1.0-blue.svg)
+![Version](https://img.shields.io/badge/version-v1.2-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)
 ![Node](https://img.shields.io/badge/node-18.x-lightgrey.svg)
@@ -22,7 +22,9 @@ Frontend (React + Tailwind)  →  FastAPI Backend  →  SQLite + ChromaDB
 - **Multi-Scanner Aggregation** — Normalize outputs from Nmap, OpenVAS, Nessus, Nuclei into unified CVE/CVSS schema
 - **RAG Chat Assistant** — Ask questions about vulnerabilities, remediation steps, exploit techniques
 - **Attack Path Modeling** — Visualize potential attack chains using graph analysis
-- **Scan Orchestration** — Launch scans against domains/IPs from a unified UI
+- **Scan Orchestration** — Launch real dynamic scans against URLs/IPs directly from the dashboard unified UI
+- **Live Backend Logs** — Real-time log streaming viewer via the new Settings page
+- **UI Theming** — Toggleable sleek Dark and Light mode glassmorphic interfaces
 - **Evaluation Framework** — Measure RAG quality with Accuracy, F1, BLEU, ROUGE metrics
 
 ## Tech Stack
@@ -78,6 +80,8 @@ vuln-detect-rag/
 ```
 
 ## Quickstart
+
+> Note: Please review the `requirements.txt` file in the root directory for a full list of system requirements, essential pre-project download commands, and libraries.
 
 ### 1. Seed CVE Data (one-time)
 

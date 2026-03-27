@@ -6,14 +6,15 @@ class AggregatorService:
     """Normalizes and deduplicates scanner outputs into a unified CVE/CVSS schema."""
 
     def aggregate(
-        self,
-        scan_id: int,
-        raw_results: list[ScanVulnerability]
+        self, scan_id: int, raw_results: list[ScanVulnerability]
     ) -> list[VulnerabilityDB]:
         # Deduplicate by CVE ID (keep highest CVSS if duplicate)
         seen: dict[str, ScanVulnerability] = {}
         for vuln in raw_results:
-            key = vuln.cve_id or f"{vuln.affected_host}:{vuln.affected_port}:{vuln.description[:50]}"
+            key = (
+                vuln.cve_id
+                or f"{vuln.affected_host}:{vuln.affected_port}:{vuln.description[:50]}"
+            )
             if key in seen:
                 existing = seen[key]
                 if vuln.cvss_score > existing.cvss_score:
@@ -66,13 +67,12 @@ class AggregatorService:
         return db_vulns
 
     def _cvss_to_severity(self, score: float) -> str:
-        if score >= 9.0:
-            return "CRITICAL"
-        elif score >= 7.0:
-            return "HIGH"
-        elif score >= 4.0:
-            return "MEDIUM"
-        return "LOW"
+        from scanners.base import ScannerAdapter
+
+        return ScannerAdapter.parse_severity(ScannerAdapter(), score)
+
+    def parse_severity(self, score: float) -> str:
+        return self._cvss_to_severity(score)
 
 
 aggregator_service = AggregatorService()

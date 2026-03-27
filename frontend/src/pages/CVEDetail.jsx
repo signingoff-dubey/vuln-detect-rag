@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Shield, ExternalLink, Bug } from 'lucide-react'
 import { getCVE } from '../api/client'
+import { sanitizeUrl } from '../utils/sanitize'
 
 const severityColors = {
   CRITICAL: 'bg-red-500/20 text-red-400 border-red-500/30',
@@ -103,12 +104,19 @@ export default function CVEDetail() {
         <div className="bg-dark-900 border border-dark-700 rounded-lg p-5">
           <h3 className="text-sm font-semibold text-white mb-3">References</h3>
           <div className="space-y-2">
-            {cve.references.map((ref, i) => (
-              <a key={i} href={ref} target="_blank" rel="noopener noreferrer"
-                className="flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300">
-                <ExternalLink className="w-4 h-4" /> {ref}
-              </a>
-            ))}
+            {cve.references.map((ref, i) => {
+              const safeHref = sanitizeUrl(ref)
+              return safeHref ? (
+                <a key={i} href={safeHref} target="_blank" rel="noopener noreferrer"
+                  className="flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300">
+                  <ExternalLink className="w-4 h-4" /> {ref}
+                </a>
+              ) : (
+                <span key={i} className="flex items-center gap-2 text-sm text-dark-500">
+                  {ref}
+                </span>
+              )
+            })}
           </div>
         </div>
       )}

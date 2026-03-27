@@ -16,6 +16,10 @@ from api.routes_cve import router as cve_router
 logging.basicConfig(
     level=logging.DEBUG if settings.DEBUG else logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers=[
+        logging.FileHandler("backend.log"),
+        logging.StreamHandler()
+    ]
 )
 logger = logging.getLogger("vulndetect")
 
@@ -81,9 +85,11 @@ async def rate_limit_middleware(request: Request, call_next):
     # Clean up expired entries
     _rate_store[key] = [t for t in _rate_store[key] if now - t < window]
 
-    # Periodic cleanup of stale keys (every ~100 requests per key)
-    if len(_rate_store[key]) == 0 and len(_rate_store) > 10000:
-        _rate_store.pop(key, None)
+    # Clean up stale keys if dict grows too large
+    if len(_rate_store) > 10000:
+        stale_keys = [k for k, v in _rate_store.items() if not v or (now - v[-1]) > 60]
+        for k in stale_keys:
+            _rate_store.pop(k, None)
 
     if len(_rate_store[key]) >= max_requests:
         return JSONResponse(
@@ -145,6 +151,18 @@ async def root():
 @app.get("/api/health")
 async def health():
     return {"status": "healthy"}
+
+
+@app.get("/api/logs")
+async def get_logs():
+    """Retrieve backend logs."""
+    try:
+        with open("backend.log", "r") as f:
+            lines = f.readlines()
+        # Return last 500 lines
+        return {"logs": "".join(lines[-500:])}
+    except Exception as e:
+        return {"logs": f"Could not read logs: {e}"}
 
 
 if __name__ == "__main__":

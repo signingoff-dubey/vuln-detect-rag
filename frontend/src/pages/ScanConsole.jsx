@@ -132,9 +132,9 @@ export default function ScanConsole() {
         </div>
         <button
           onClick={loadHistory}
-          className="px-3 py-2 bg-dark-800 border border-dark-600 rounded-lg text-sm text-dark-300 hover:text-white flex items-center gap-2"
+          className="px-3 py-2 glass hover:bg-dark-800/80 rounded-lg text-sm text-dark-300 hover:text-white flex items-center gap-2 transition-colors"
         >
-          <RefreshCw className="w-4 h-4" />
+          <RefreshCw className="w-4 h-4 text-blue-400" />
           Refresh
         </button>
       </div>
@@ -142,14 +142,14 @@ export default function ScanConsole() {
       <div className="grid grid-cols-3 gap-6">
         {/* Scan Form */}
         <div className="col-span-1">
-          <div className="bg-dark-900 border border-dark-700 rounded-lg p-5">
+          <div className="glass rounded-lg p-5">
             <h3 className="text-sm font-semibold text-white mb-4">New Scan</h3>
             <ScanForm onStartScan={handleStartScan} loading={scanning} onAddFavorite={handleAddFavorite} />
           </div>
 
           {/* Favorites */}
           {favorites.length > 0 && (
-            <div className="bg-dark-900 border border-dark-700 rounded-lg mt-4">
+            <div className="glass rounded-lg mt-4">
               <div className="p-4 border-b border-dark-700 flex items-center gap-2">
                 <Star className="w-4 h-4 text-yellow-400" />
                 <h3 className="text-sm font-semibold text-white">Favorites</h3>
@@ -171,9 +171,9 @@ export default function ScanConsole() {
           )}
 
           {/* Scan History */}
-          <div className="bg-dark-900 border border-dark-700 rounded-lg mt-4">
-            <div className="p-4 border-b border-dark-700 flex items-center gap-2">
-              <History className="w-4 h-4 text-dark-400" />
+          <div className="glass rounded-lg mt-4">
+            <div className="p-4 border-b border-dark-700/50 flex items-center gap-2">
+              <History className="w-4 h-4 text-purple-400" />
               <h3 className="text-sm font-semibold text-white">Scan History</h3>
             </div>
             <div className="divide-y divide-dark-700 max-h-[400px] overflow-auto">
@@ -181,8 +181,8 @@ export default function ScanConsole() {
                 <div
                   key={scan.id}
                   onClick={() => { loadScan(scan.id); setActiveTab('results') }}
-                  className={`px-4 py-3 cursor-pointer hover:bg-dark-800 transition-colors ${
-                    currentScan?.id === scan.id ? 'bg-dark-800 border-l-2 border-blue-500' : ''
+                  className={`px-4 py-3 cursor-pointer hover:bg-dark-800/50 transition-colors ${
+                    currentScan?.id === scan.id ? 'bg-dark-800/80 border-l-2 border-blue-500' : ''
                   }`}
                 >
                   <div className="text-sm font-medium text-white">{scan.target}</div>
@@ -217,7 +217,7 @@ export default function ScanConsole() {
           {currentScan ? (
             <div className="space-y-4">
               {/* Tabs */}
-              <div className="flex gap-1 bg-dark-900 p-1 rounded-lg border border-dark-700">
+              <div className="flex gap-1 glass p-1 rounded-lg">
                 {['results', 'attack-paths'].map((tab) => (
                   <button
                     key={tab}
@@ -241,7 +241,7 @@ export default function ScanConsole() {
               )}
             </div>
           ) : (
-            <div className="bg-dark-900 border border-dark-700 rounded-lg p-12 text-center">
+            <div className="glass rounded-lg p-12 text-center">
               <div className="text-dark-500">
                 <p className="text-lg font-medium">No scan selected</p>
                 <p className="text-sm mt-1">Start a new scan or select one from history</p>

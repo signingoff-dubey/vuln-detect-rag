@@ -27,6 +27,12 @@ export default function Dashboard() {
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  
+  // New scan state
+  const [targetUrl, setTargetUrl] = useState('')
+  const [isScanning, setIsScanning] = useState(false)
+  const [scanError, setScanError] = useState('')
+
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -45,6 +51,25 @@ export default function Dashboard() {
       setError(err.message || 'Failed to load dashboard data')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleStartScan = async (e) => {
+    e.preventDefault()
+    if (!targetUrl.trim()) return
+
+    setIsScanning(true)
+    setScanError('')
+    
+    try {
+      const { startScan } = await import('../api/client')
+      const { data } = await startScan(targetUrl, ['nmap', 'nuclei'])
+      setTargetUrl('')
+      navigate(`/scans?scan=${data.id}`)
+    } catch (err) {
+      setScanError(err.message || 'Failed to start scan')
+    } finally {
+      setIsScanning(false)
     }
   }
 
@@ -81,18 +106,40 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col space-y-4 md:flex-row md:items-center md:justify-between md:space-y-0 relative">
         <div>
           <h1 className="text-2xl font-bold text-white">Dashboard</h1>
           <p className="text-dark-400 text-sm mt-1">Vulnerability scanning overview</p>
         </div>
-        <button
-          onClick={() => navigate('/scans')}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-medium text-white flex items-center gap-2"
-        >
-          <Shield className="w-4 h-4" />
-          New Scan
-        </button>
+        
+        <form onSubmit={handleStartScan} className="flex items-center relative gap-2 bg-dark-900 border border-dark-700 p-2 rounded-xl focus-within:border-blue-500 transition-colors shadow-lg">
+          <Shield className="w-5 h-5 text-dark-400 ml-2" />
+          <input
+            type="text"
+            value={targetUrl}
+            onChange={(e) => setTargetUrl(e.target.value)}
+            placeholder="Enter target URL or IP (e.g., example.com)"
+            className="bg-transparent border-none outline-none text-white text-sm px-2 w-64 placeholder-dark-500"
+            disabled={isScanning}
+            required
+          />
+          <button
+            type="submit"
+            disabled={isScanning || !targetUrl.trim()}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-dark-700 disabled:text-dark-400 rounded-lg text-sm font-medium text-white transition-colors flex items-center gap-2"
+          >
+            {isScanning ? (
+              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : (
+              'Start Scan'
+            )}
+          </button>
+        </form>
+        {scanError && (
+          <div className="absolute -bottom-6 right-0 text-red-400 text-xs">
+            {scanError}
+          </div>
+        )}
       </div>
 
       {/* Stats Cards */}

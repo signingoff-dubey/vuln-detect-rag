@@ -5,6 +5,13 @@
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  background: radial-gradient(circle at top right, #0f172a, #020617 40%),
+              radial-gradient(circle at bottom left, #1e1b4b, #020617 40%);
+  background-size: cover;
+  background-attachment: fixed;
+  background-color: #020617; /* Fallback slate-950 */
+  color: #f1f5f9;
+  min-height: 100vh;
 }
 
 ::-webkit-scrollbar {
@@ -24,9 +31,17 @@ body {
   background: #64748b;
 }
 
+/* Glassmorphism utilities */
+.glass {
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
 /* Light theme overrides */
 html.light body {
-  background-color: #f8fafc;
+  background: #f8fafc;
   color: #1e293b;
 }
 

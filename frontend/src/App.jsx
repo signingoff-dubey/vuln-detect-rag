@@ -5,7 +5,11 @@ import Dashboard from './pages/Dashboard'
 import ScanConsole from './pages/ScanConsole'
 import RAGAssistant from './pages/RAGAssistant'
 import CVEDetail from './pages/CVEDetail'
+import ScanConsole from './pages/ScanConsole'
+import RAGAssistant from './pages/RAGAssistant'
+import CVEDetail from './pages/CVEDetail'
 import CVEBrowse from './pages/CVEBrowse'
+import Settings from './pages/Settings'
 
 function NotFound() {
   return (
@@ -34,6 +38,7 @@ export default function App() {
           <Route path="rag" element={<RAGAssistant />} />
           <Route path="cve" element={<CVEBrowse />} />
           <Route path="cve/:cveId" element={<CVEDetail />} />
+          <Route path="settings" element={<Settings />} />
           <Route path="*" element={<NotFound />} />
         </Route>
       </Routes>
