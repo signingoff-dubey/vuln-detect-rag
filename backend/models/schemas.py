@@ -1,5 +1,5 @@
 from datetime import datetime
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 from typing import Literal, Optional
 
 
@@ -29,21 +29,9 @@ class VulnerabilityResponse(VulnerabilityBase):
     id: int
     scan_id: int
     created_at: datetime
-    #: True when this finding is simulated sample data produced because the
-    #: scanner was unavailable, rather than something observed on the target.
-    #: Derived from raw_output so the UI can mark it per finding instead of
-    #: only per scanner selection.
-    simulated: bool = False
 
     class Config:
         from_attributes = True
-
-    @model_validator(mode="after")
-    def _flag_simulated(self):
-        """Surface the mock marker that scanner adapters already record."""
-        raw = self.raw_output or {}
-        object.__setattr__(self, "simulated", raw.get("type") == "mock")
-        return self
 
 
 # --- Scan Schemas ---

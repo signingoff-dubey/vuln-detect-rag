@@ -4,7 +4,6 @@ import json
 import io
 import ipaddress
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends, Query
-from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -105,41 +104,6 @@ async def get_attack_paths(scan_id: int):
     if not scan:
         raise HTTPException(status_code=404, detail="Scan not found")
     return attack_path_service.compute_attack_paths(scan_id)
-
-
-@router.post("/scans/{scan_id}/explain")
-async def explain_scan(
-    scan_id: int,
-    question: str = Query(default="", max_length=1000),
-    db: Session = Depends(get_db),
-):
-    """Explain a scan's findings in plain language.
-
-    The last step of the product flow: the target is scanned, the selected
-    tools return findings, those findings are chunked and indexed, and the
-    model explains what they mean and what to fix first.
-    """
-    scan = orchestrator_service.get_scan(scan_id)
-    if not scan:
-        raise HTTPException(status_code=404, detail="Scan not found")
-
-    vulns = (
-        db.query(VulnerabilityDB)
-        .filter(VulnerabilityDB.scan_id == scan_id)
-        .order_by(VulnerabilityDB.cvss_score.desc())
-        .all()
-    )
-
-    from services.rag_engine import rag_engine
-
-    # Embedding and generation are blocking, so this runs off the event loop.
-    return await run_in_threadpool(
-        rag_engine.explain_scan,
-        scan_id,
-        scan.target,
-        vulns,
-        question or None,
-    )
 
 
 @router.get("/scans/{scan_id}/export")

@@ -18,16 +18,10 @@ env/
 *.db
 *.sqlite3
 
-# ChromaDB persistence — binary index data is rebuildable from
-# scripts/seed_cve_data.py and must never be committed.
+# ChromaDB persistence
 data/chroma/
 backend/data/chroma/
 scripts/data/chroma/
-**/chroma/
-*.bin
-
-# Committed virtualenv (must never be tracked)
-backend/venv/
 
 # Logs
 *.log
@@ -45,13 +39,3 @@ frontend/dist/
 # OS
 .DS_Store
 Thumbs.db
-
-# Stray Windows artifact created by a shell redirect to NUL.
-# Ignored rather than deleted, pending confirmation.
-nul
-
-# Quarantined non-canonical variants (see archive/README.md).
-# The README itself is tracked; the duplicate trees are not, to keep them
-# out of the repo while remaining on disk for reference.
-archive/EMET/
-archive/v1.5/

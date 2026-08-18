@@ -1,81 +1,60 @@
 import { NavLink } from 'react-router-dom'
-import { Shield, LayoutDashboard, Scan, MessageSquare, Activity, Database, Settings } from 'lucide-react'
-import { useTheme } from '../context/ThemeContext'
+import { Shield, LayoutDashboard, Scan, MessageSquare, Activity, Database, Sun, Moon, Settings } from 'lucide-react'
 
 const navItems = [
-  { to: '/', icon: LayoutDashboard, label: 'Dashboard', color: 'bg-neo-yellow' },
-  { to: '/scans', icon: Scan, label: 'Scan Console', color: 'bg-neo-cyan' },
-  { to: '/rag', icon: MessageSquare, label: 'RAG Assistant', color: 'bg-neo-purple' },
-  { to: '/cve', icon: Database, label: 'CVE Database', color: 'bg-neo-green' },
-  { to: '/settings', icon: Settings, label: 'Settings', color: 'bg-neo-pink' },
+  { to: '/', icon: LayoutDashboard, label: 'Dashboard', iconColor: 'text-blue-400' },
+  { to: '/scans', icon: Scan, label: 'Scan Console', iconColor: 'text-cyan-400' },
+  { to: '/rag', icon: MessageSquare, label: 'RAG Assistant', iconColor: 'text-indigo-400' },
+  { to: '/cve', icon: Database, label: 'CVE Database', iconColor: 'text-emerald-400' },
+  { to: '/settings', icon: Settings, label: 'Settings', iconColor: 'text-purple-400' },
 ]
 
-export default function Sidebar() {
-  const { theme, setTheme } = useTheme()
-
+export default function Sidebar({ theme, onToggleTheme }) {
   return (
-    <aside className="w-64 app-sidebar border-r-[3px] border-black flex flex-col z-10">
-      <div className="p-5 border-b-[3px] border-black app-sidebar-accent">
+    <aside className="w-64 glass border-r border-dark-700 flex flex-col z-10">
+      <div className="p-5 border-b border-dark-700/50">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-black flex items-center justify-center">
-            <Shield className="w-6 h-6 text-neo-yellow" />
+          <div className="w-10 h-10 bg-gradient-to-br from-red-500 to-orange-500 rounded-lg flex items-center justify-center">
+            <Shield className="w-6 h-6 text-white" />
           </div>
           <div>
-            <h1 className="text-lg font-black uppercase tracking-tight text-black">VulnDetect</h1>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-black/60">RAG Platform</p>
+            <h1 className="text-lg font-bold text-white">VulnDetectRAG</h1>
+            <p className="text-xs text-dark-400">Vulnerability Intelligence</p>
           </div>
-        </div>
-      </div>
-
-      <div className="p-4 border-b-[3px] border-black">
-        <p className="text-[10px] font-black uppercase tracking-widest mb-2 text-gray-500">Theme</p>
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            onClick={() => setTheme('classic')}
-            className={`px-3 py-2 text-[10px] font-black uppercase border-3 border-black nb-btn ${theme === 'classic' ? 'bg-neo-yellow' : 'bg-white'}`}
-            aria-pressed={theme === 'classic'}
-            aria-label="Switch to Classic theme"
-          >
-            Classic
-          </button>
-          <button
-            type="button"
-            onClick={() => setTheme('color')}
-            className={`px-3 py-2 text-[10px] font-black uppercase border-3 border-black nb-btn ${theme === 'color' ? 'bg-neo-pink text-white' : 'bg-white'}`}
-            aria-pressed={theme === 'color'}
-            aria-label="Switch to Color theme"
-          >
-            Color
-          </button>
         </div>
       </div>
 
       <nav className="flex-1 p-4 space-y-2">
-        {navItems.map(({ to, icon: Icon, label, color }) => (
+        {navItems.map(({ to, icon: Icon, label, iconColor }) => (
           <NavLink
             key={to}
             to={to}
             end={to === '/'}
-            aria-label={label}
             className={({ isActive }) =>
-              `flex items-center gap-3 px-4 py-3 text-sm font-bold uppercase tracking-wide transition-all border-3 border-black app-nav-link ${
+              `flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
                 isActive
-                  ? `${color} shadow-[3px_3px_0px_0px_#000] translate-x-[-2px] translate-y-[-1px]`
-                  : 'bg-white hover:bg-gray-100 shadow-[4px_4px_0px_0px_#000] hover:shadow-[2px_2px_0px_0px_#000] hover:translate-x-[-2px] hover:translate-y-[-2px]'
+                  ? 'bg-dark-800/80 text-white border border-dark-600/50 shadow-md transform scale-[1.02]'
+                  : 'text-dark-300 hover:bg-dark-800/40 hover:text-white hover:transform hover:scale-[1.01]'
               }`
             }
           >
-            <Icon className="w-5 h-5" aria-hidden="true" />
+            <Icon className={`w-5 h-5 ${iconColor}`} />
             {label}
           </NavLink>
         ))}
       </nav>
 
-      <div className="p-4 border-t-[3px] border-black">
-        <div className="flex items-center gap-2 text-xs font-bold text-gray-500 uppercase">
+      <div className="p-4 border-t border-dark-700/50 space-y-3">
+        <button
+          onClick={onToggleTheme}
+          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-dark-400 hover:text-white hover:bg-dark-800/50 transition-colors"
+        >
+          {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+        </button>
+        <div className="flex items-center gap-2 text-xs text-dark-500">
           <Activity className="w-3 h-3" />
-          <span>v3.5.0</span>
+          <span>v1.3.0</span>
         </div>
       </div>
     </aside>

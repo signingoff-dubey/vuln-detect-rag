@@ -5,10 +5,10 @@ import { getCVE } from '../api/client'
 import { sanitizeUrl } from '../utils/sanitize'
 
 const severityColors = {
-  CRITICAL: 'bg-severity-critical',
-  HIGH: 'bg-severity-high',
-  MEDIUM: 'bg-severity-medium',
-  LOW: 'bg-severity-low',
+  CRITICAL: 'bg-red-500/20 text-red-400 border-red-500/30',
+  HIGH: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
+  MEDIUM: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
+  LOW: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
 }
 
 export default function CVEDetail() {
@@ -18,22 +18,27 @@ export default function CVEDetail() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
-  useEffect(() => { loadCVE() }, [cveId])
+  useEffect(() => {
+    loadCVE()
+  }, [cveId])
 
   const loadCVE = async () => {
-    setLoading(true); setError(null)
+    setLoading(true)
+    setError(null)
     try {
       const { data } = await getCVE(cveId)
       setCve(data)
     } catch (err) {
       setError(err.response?.data?.detail || 'CVE not found')
-    } finally { setLoading(false) }
+    } finally {
+      setLoading(false)
+    }
   }
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="w-8 h-8 border-4 border-black border-t-neo-cyan bg-white animate-spin" />
+        <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
       </div>
     )
   }
@@ -41,13 +46,13 @@ export default function CVEDetail() {
   if (error) {
     return (
       <div className="space-y-4">
-        <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-sm font-bold hover:text-neo-red uppercase">
+        <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-dark-400 hover:text-white text-sm">
           <ArrowLeft className="w-4 h-4" /> Back
         </button>
-        <div className="bg-white border-3 border-black p-12 text-center shadow-[6px_6px_0px_0px_#000]">
-          <Shield className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-          <p className="text-xl font-black text-neo-red uppercase">{error}</p>
-          <p className="text-sm font-bold text-gray-500 mt-2">{cveId} was not found in the database</p>
+        <div className="bg-dark-900 border border-dark-700 rounded-lg p-12 text-center">
+          <Shield className="w-12 h-12 text-dark-600 mx-auto mb-4" />
+          <p className="text-lg text-red-400">{error}</p>
+          <p className="text-sm text-dark-500 mt-2">{cveId} was not found in the database</p>
         </div>
       </div>
     )
@@ -57,59 +62,59 @@ export default function CVEDetail() {
 
   return (
     <div className="space-y-6">
-      <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-sm font-bold hover:text-neo-red uppercase">
+      <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-dark-400 hover:text-white text-sm">
         <ArrowLeft className="w-4 h-4" /> Back
       </button>
 
-      <div className="bg-white border-3 border-black p-4 sm:p-6 shadow-[6px_6px_0px_0px_#000]">
+      <div className="bg-dark-900 border border-dark-700 rounded-lg p-4 sm:p-6">
         <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2 mb-2">
-              <h1 className="text-xl sm:text-2xl font-black font-mono truncate">{cve.cve_id}</h1>
-              <span className={`px-2 py-1 text-[10px] font-black uppercase border-2 border-black ${severityClass}`}>
+              <h1 className="text-xl sm:text-2xl font-bold text-white font-mono truncate">{cve.cve_id}</h1>
+              <span className={`px-2 py-1 text-xs font-semibold rounded border flex-shrink-0 ${severityClass}`}>
                 {cve.severity}
               </span>
               {cve.exploit_available && (
-                <span className="px-2 py-1 text-[10px] bg-neo-red text-white border-2 border-black font-black uppercase flex items-center gap-1">
+                <span className="px-2 py-1 text-xs bg-red-600 text-white rounded flex items-center gap-1 flex-shrink-0">
                   <Bug className="w-3 h-3" /> EXPLOIT
                 </span>
               )}
             </div>
-            <p className="text-xs font-bold text-gray-500 uppercase">Source: {cve.source}</p>
+            <p className="text-dark-400 text-sm">Source: {cve.source}</p>
           </div>
           <div className="text-left sm:text-right flex-shrink-0">
-            <div className="text-3xl sm:text-4xl font-black">{cve.cvss_score}</div>
-            <div className="text-[10px] font-black uppercase text-gray-500">CVSS Score</div>
+            <div className="text-3xl sm:text-4xl font-bold text-white">{cve.cvss_score}</div>
+            <div className="text-xs text-dark-500 uppercase">CVSS Score</div>
           </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white border-3 border-black p-5 shadow-[4px_4px_0px_0px_#000]">
-          <h3 className="text-xs font-black uppercase mb-3">Description</h3>
-          <p className="text-sm leading-relaxed break-words">{cve.description}</p>
+        <div className="bg-dark-900 border border-dark-700 rounded-lg p-5">
+          <h3 className="text-sm font-semibold text-white mb-3">Description</h3>
+          <p className="text-sm text-dark-300 leading-relaxed break-words">{cve.description}</p>
         </div>
-        <div className="bg-white border-3 border-black p-5 shadow-[4px_4px_0px_0px_#000]">
-          <h3 className="text-xs font-black uppercase mb-3">Remediation</h3>
-          <p className="text-sm text-green-700 bg-green-50 border-2 border-green-700 p-2 leading-relaxed break-words font-bold">
-            {cve.solution || 'No remediation info available'}
-          </p>
+        <div className="bg-dark-900 border border-dark-700 rounded-lg p-5">
+          <h3 className="text-sm font-semibold text-white mb-3">Remediation</h3>
+          <p className="text-sm text-green-400 leading-relaxed break-words">{cve.solution || 'No remediation info available'}</p>
         </div>
       </div>
 
       {cve.references?.length > 0 && (
-        <div className="bg-white border-3 border-black p-5 shadow-[4px_4px_0px_0px_#000]">
-          <h3 className="text-xs font-black uppercase mb-3">References</h3>
+        <div className="bg-dark-900 border border-dark-700 rounded-lg p-5">
+          <h3 className="text-sm font-semibold text-white mb-3">References</h3>
           <div className="space-y-2">
             {cve.references.map((ref, i) => {
               const safeHref = sanitizeUrl(ref)
               return safeHref ? (
                 <a key={i} href={safeHref} target="_blank" rel="noopener noreferrer"
-                  className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-800 font-bold">
+                  className="flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300">
                   <ExternalLink className="w-4 h-4" /> {ref}
                 </a>
               ) : (
-                <span key={i} className="flex items-center gap-2 text-sm text-gray-400">{ref}</span>
+                <span key={i} className="flex items-center gap-2 text-sm text-dark-500">
+                  {ref}
+                </span>
               )
             })}
           </div>

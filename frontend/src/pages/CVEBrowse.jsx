@@ -4,10 +4,10 @@ import { Search, Bug, ExternalLink } from 'lucide-react'
 import { searchCVEs } from '../api/client'
 
 const severityColors = {
-  CRITICAL: 'text-severity-critical',
-  HIGH: 'text-severity-high',
-  MEDIUM: 'text-severity-medium',
-  LOW: 'text-severity-low',
+  CRITICAL: 'text-red-400',
+  HIGH: 'text-orange-400',
+  MEDIUM: 'text-yellow-400',
+  LOW: 'text-blue-400',
 }
 
 const SEVERITIES = ['', 'CRITICAL', 'HIGH', 'MEDIUM', 'LOW']
@@ -20,23 +20,32 @@ export default function CVEBrowse() {
   const [severity, setSeverity] = useState('')
   const [exploitOnly, setExploitOnly] = useState(false)
 
-  useEffect(() => { searchCVE() }, [severity, exploitOnly])
+  useEffect(() => {
+    searchCVE()
+  }, [severity, exploitOnly])
 
   const searchCVE = async () => {
     setLoading(true)
     try {
       const { data } = await searchCVEs(query, severity, exploitOnly)
       setCves(data)
-    } catch (err) { console.error(err) } finally { setLoading(false) }
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setLoading(false)
+    }
   }
 
-  const handleSearch = (e) => { e.preventDefault(); searchCVE() }
+  const handleSearch = (e) => {
+    e.preventDefault()
+    searchCVE()
+  }
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-black uppercase tracking-tight">CVE Database</h1>
-        <p className="text-sm font-bold text-gray-600 mt-1 uppercase tracking-wider">Browse and search known vulnerabilities</p>
+        <h1 className="text-2xl font-bold text-white">CVE Database</h1>
+        <p className="text-dark-400 text-sm mt-1">Browse and search known vulnerabilities</p>
       </div>
 
       <div className="flex flex-col gap-3">
@@ -46,9 +55,9 @@ export default function CVEBrowse() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search CVE descriptions..."
-            className="flex-1 min-w-0 bg-white border-3 border-black px-4 py-2.5 text-sm font-mono nb-input"
+            className="flex-1 min-w-0 bg-dark-900 border border-dark-700 rounded-lg px-4 py-2.5 text-sm text-white placeholder-dark-500 focus:outline-none focus:border-blue-500"
           />
-          <button type="submit" className="px-4 py-2.5 bg-neo-yellow border-3 border-black nb-btn">
+          <button type="submit" className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 rounded-lg text-white flex-shrink-0">
             <Search className="w-4 h-4" />
           </button>
         </form>
@@ -58,17 +67,18 @@ export default function CVEBrowse() {
             <button
               key={s || 'all'}
               onClick={() => setSeverity(s)}
-              className={`px-3 py-2 text-[10px] font-black uppercase border-3 border-black transition-all ${
-                severity === s ? 'bg-neo-cyan shadow-neb-xs' : 'bg-white shadow-neb-sm hover:shadow-neb-xs'
+              className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                severity === s ? 'bg-blue-600 text-white' : 'bg-dark-900 border border-dark-700 text-dark-400 hover:text-white'
               }`}
             >
               {s || 'ALL'}
             </button>
           ))}
+
           <button
             onClick={() => setExploitOnly(!exploitOnly)}
-            className={`px-3 py-2 text-[10px] font-black uppercase border-3 border-black flex items-center gap-1.5 transition-all ${
-              exploitOnly ? 'bg-neo-red text-white shadow-neb-xs' : 'bg-white shadow-neb-sm'
+            className={`px-3 py-2 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors ${
+              exploitOnly ? 'bg-red-600 text-white' : 'bg-dark-900 border border-dark-700 text-dark-400 hover:text-white'
             }`}
           >
             <Bug className="w-3 h-3" /> Exploits
@@ -76,42 +86,39 @@ export default function CVEBrowse() {
         </div>
       </div>
 
-      <div className="bg-white border-3 border-black shadow-neb divide-y-[3px] divide-black overflow-hidden">
+      <div className="bg-dark-900 border border-dark-700 rounded-lg divide-y divide-dark-700">
         {loading ? (
           <div className="p-8 text-center">
-            <div className="w-8 h-8 border-4 border-black border-t-neo-cyan bg-white animate-spin mx-auto" />
+            <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto" />
           </div>
         ) : cves.length > 0 ? (
           cves.map((cve) => (
-            <a
+            <div
               key={cve.id}
-              href={`/cve/${cve.cve_id}`}
-              onClick={(e) => { e.preventDefault(); navigate(`/cve/${cve.cve_id}`) }}
-              className="px-5 py-4 flex items-center justify-between hover:bg-gray-50 cursor-pointer transition-colors block"
-              role="button"
-              aria-label={`View details for ${cve.cve_id}`}
+              onClick={() => navigate(`/cve/${cve.cve_id}`)}
+              className="px-5 py-4 flex items-center justify-between hover:bg-dark-800 cursor-pointer transition-colors"
             >
               <div className="flex items-center gap-4 flex-1 min-w-0">
-                <span className={`text-sm font-black font-mono ${severityColors[cve.severity] || 'text-gray-500'}`}>
+                <span className={`text-sm font-semibold font-mono ${severityColors[cve.severity] || 'text-dark-400'}`}>
                   {cve.cve_id}
                 </span>
-                <span className="text-sm truncate">{cve.description}</span>
+                <span className="text-sm text-dark-300 truncate">{cve.description}</span>
                 {cve.exploit_available && (
-                  <span className="px-1.5 py-0.5 text-[10px] bg-neo-red text-white border-2 border-black font-black uppercase flex-shrink-0">EXPLOIT</span>
+                  <span className="px-1.5 py-0.5 text-[10px] bg-red-600 text-white rounded flex-shrink-0">EXPLOIT</span>
                 )}
               </div>
               <div className="flex items-center gap-4 ml-4">
-                <span className="text-lg font-black">{cve.cvss_score}</span>
-                <ExternalLink className="w-4 h-4 text-gray-400" />
+                <span className="text-lg font-bold text-white">{cve.cvss_score}</span>
+                <ExternalLink className="w-4 h-4 text-dark-500" />
               </div>
-            </a>
+            </div>
           ))
         ) : (
-          <div className="p-8 text-center text-gray-400 text-sm font-bold uppercase">No CVEs found</div>
+          <div className="p-8 text-center text-dark-500 text-sm">No CVEs found</div>
         )}
       </div>
 
-      <div className="text-[10px] font-bold text-gray-400 text-center uppercase">{cves.length} results</div>
+      <div className="text-xs text-dark-500 text-center">{cves.length} results</div>
     </div>
   )
 }

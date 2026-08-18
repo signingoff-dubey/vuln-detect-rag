@@ -61,8 +61,7 @@ YOU (the user)
 
 - Checks if Python is installed
 - Checks if Node.js is installed
-- Checks for Ollama and auto-downloads the local AI model (`qwen2.5-coder:7b`) if needed
-- Creates a Python environment and installs all backend libraries
+- Creates a Python environment and installs all libraries
 - Starts the backend server
 - Installs frontend packages (first time only) and starts the website
 - Opens your browser to `http://localhost:5173`
@@ -157,7 +156,7 @@ backend/
 Important settings:
 | Setting | What it does |
 |---|---|
-| `APP_VERSION` | Current version (2.0.0) |
+| `APP_VERSION` | Current version (1.3.0) |
 | `DATABASE_URL` | Path to the SQLite database file |
 | `CHROMA_PERSIST_DIR` | Where the AI's memory (vector database) is stored |
 | `OLLAMA_BASE_URL` | URL where Ollama is running (default: http://localhost:11434) |

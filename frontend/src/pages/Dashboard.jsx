@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -11,16 +11,16 @@ import { getStats, getHealth, startScan } from '../api/client'
 
 const SEVERITY_COLORS = {
   CRITICAL: '#ef4444',
-  HIGH: '#ea580c',
-  MEDIUM: '#ca8a04',
-  LOW: '#2563eb',
+  HIGH: '#f97316',
+  MEDIUM: '#eab308',
+  LOW: '#3b82f6',
 }
 
 const statusColors = {
-  completed: 'bg-neo-green text-black',
-  running: 'bg-neo-cyan text-black',
-  pending: 'bg-neo-yellow text-black',
-  failed: 'bg-neo-red text-white',
+  completed: 'bg-green-500/20 text-green-400',
+  running: 'bg-blue-500/20 text-blue-400',
+  pending: 'bg-yellow-500/20 text-yellow-400',
+  failed: 'bg-red-500/20 text-red-400',
 }
 
 export default function Dashboard() {
@@ -28,9 +28,12 @@ export default function Dashboard() {
   const [health, setHealth] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+
+  // New scan state
   const [targetUrl, setTargetUrl] = useState('')
   const [isScanning, setIsScanning] = useState(false)
   const [scanError, setScanError] = useState('')
+
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -55,6 +58,7 @@ export default function Dashboard() {
       setStats(data)
       setError(null)
     } catch (err) {
+      console.error('Failed to load stats:', err)
       setError(err.message || 'Failed to load dashboard data')
     } finally {
       setLoading(false)
@@ -64,8 +68,10 @@ export default function Dashboard() {
   const handleStartScan = async (e) => {
     e.preventDefault()
     if (!targetUrl.trim()) return
+
     setIsScanning(true)
     setScanError('')
+    
     try {
       const { data } = await startScan(targetUrl, ['nmap', 'nuclei'])
       setTargetUrl('')
@@ -80,46 +86,51 @@ export default function Dashboard() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="w-8 h-8 border-4 border-black border-t-neo-yellow bg-white animate-spin" />
+        <div className="w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
       </div>
     )
   }
 
   if (error && !stats) {
     return (
-      <div className="flex flex-col items-center justify-center h-full">
-        <AlertTriangle className="w-12 h-12 text-neo-red mb-3" />
-        <p className="text-xl font-black mb-1 uppercase">Failed to load</p>
-        <p className="text-sm mb-4 font-bold text-gray-600">{error}</p>
-        <button onClick={loadStats} className="px-6 py-3 bg-neo-yellow nb-btn text-sm">Retry</button>
+      <div className="flex flex-col items-center justify-center h-full text-dark-400">
+        <AlertTriangle className="w-10 h-10 text-red-400 mb-3" />
+        <p className="text-white font-semibold mb-1">Failed to load dashboard</p>
+        <p className="text-sm mb-4">{error}</p>
+        <button
+          onClick={loadStats}
+          className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-white text-sm font-medium"
+        >
+          Retry
+        </button>
       </div>
     )
   }
 
-  const severityData = useMemo(() => [
+  const severityData = [
     { name: 'Critical', value: stats?.critical_vulns || 0, color: SEVERITY_COLORS.CRITICAL },
     { name: 'High', value: stats?.high_vulns || 0, color: SEVERITY_COLORS.HIGH },
     { name: 'Medium', value: stats?.medium_vulns || 0, color: SEVERITY_COLORS.MEDIUM },
     { name: 'Low', value: stats?.low_vulns || 0, color: SEVERITY_COLORS.LOW },
-  ].filter(d => d.value > 0), [stats?.critical_vulns, stats?.high_vulns, stats?.medium_vulns, stats?.low_vulns])
+  ].filter(d => d.value > 0)
 
   return (
     <div className="space-y-6 min-w-0">
       <div className="flex flex-col gap-4">
         <div>
-          <h1 className="text-3xl font-black uppercase tracking-tight">Dashboard</h1>
-          <p className="text-sm font-bold text-gray-600 mt-1 uppercase tracking-wider">Vulnerability scanning overview</p>
+          <h1 className="text-2xl font-bold text-white">Dashboard</h1>
+          <p className="text-dark-400 text-sm mt-1">Vulnerability scanning overview</p>
         </div>
-
-        <form onSubmit={handleStartScan} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-          <div className="flex items-center gap-2 flex-1 min-w-0 bg-white border-3 border-black px-4 py-3 nb-input">
-            <Shield className="w-5 h-5 text-gray-400 flex-shrink-0" />
+        
+        <form onSubmit={handleStartScan} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 bg-dark-900 border border-dark-700 p-3 rounded-xl focus-within:border-blue-500 transition-colors shadow-lg">
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <Shield className="w-5 h-5 text-dark-400 flex-shrink-0" />
             <input
               type="text"
               value={targetUrl}
               onChange={(e) => setTargetUrl(e.target.value)}
-              placeholder="Enter target (e.g., example.com)"
-              className="bg-transparent border-none outline-none text-black text-sm w-full placeholder-gray-400 font-mono"
+              placeholder="Enter target URL or IP (e.g., example.com)"
+              className="bg-transparent border-none outline-none text-white text-sm w-full placeholder-dark-500"
               disabled={isScanning}
               required
             />
@@ -127,67 +138,126 @@ export default function Dashboard() {
           <button
             type="submit"
             disabled={isScanning || !targetUrl.trim()}
-            className="px-6 py-3 bg-neo-red text-white nb-btn disabled:bg-gray-300 disabled:text-gray-500 disabled:shadow-none flex items-center justify-center gap-2 flex-shrink-0 text-sm"
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-dark-700 disabled:text-dark-400 rounded-lg text-sm font-medium text-white transition-colors flex items-center justify-center gap-2 flex-shrink-0"
           >
             {isScanning ? (
-              <div className="w-4 h-4 border-2 border-white/30 border-t-white animate-spin" />
-            ) : 'Start Scan'}
+              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : (
+              'Start Scan'
+            )}
           </button>
         </form>
-        {scanError && <div className="text-neo-red text-xs font-bold">{scanError}</div>}
+        {scanError && (
+          <div className="text-red-400 text-xs">{scanError}</div>
+        )}
       </div>
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {[
-          { label: 'Total Scans', value: stats?.total_scans || 0, icon: Activity, color: 'bg-neo-cyan' },
-          { label: 'Vulnerabilities', value: stats?.total_vulnerabilities || 0, icon: AlertTriangle, color: 'bg-neo-orange' },
-          { label: 'Critical Vulns', value: stats?.critical_vulns || 0, icon: Shield, color: 'bg-neo-red' },
-          { label: 'Avg CVSS', value: stats?.avg_cvss || 0, icon: TrendingUp, color: 'bg-neo-green' },
-        ].map((card, i) => (
-          <div key={i} className={`${card.color} border-3 border-black p-5 shadow-neb-sm hover:shadow-neb-hover hover:translate-x-[-2px] hover:translate-y-[-2px] transition-all`}>
-            <div className="flex items-center gap-3">
-              <card.icon className="w-6 h-6" />
-              <div>
-                <div className="text-2xl font-black">{card.value}</div>
-                <div className="text-[10px] font-bold uppercase tracking-wider opacity-70">{card.label}</div>
-              </div>
+        <div className="bg-dark-900 border border-dark-700 rounded-lg p-5">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center">
+              <Activity className="w-5 h-5 text-blue-400" />
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-white">{stats?.total_scans || 0}</div>
+              <div className="text-xs text-dark-400">Total Scans</div>
             </div>
           </div>
-        ))}
+        </div>
+
+        <div className="bg-dark-900 border border-dark-700 rounded-lg p-5">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-red-500/20 rounded-lg flex items-center justify-center">
+              <AlertTriangle className="w-5 h-5 text-red-400" />
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-white">{stats?.total_vulnerabilities || 0}</div>
+              <div className="text-xs text-dark-400">Vulnerabilities Found</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-dark-900 border border-dark-700 rounded-lg p-5">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-orange-500/20 rounded-lg flex items-center justify-center">
+              <Shield className="w-5 h-5 text-orange-400" />
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-white">{stats?.critical_vulns || 0}</div>
+              <div className="text-xs text-dark-400">Critical Vulnerabilities</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-dark-900 border border-dark-700 rounded-lg p-5">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-green-500/20 rounded-lg flex items-center justify-center">
+              <TrendingUp className="w-5 h-5 text-green-400" />
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-white">{stats?.avg_cvss || 0}</div>
+              <div className="text-xs text-dark-400">Avg CVSS Score</div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Severity Distribution */}
-        <div className="bg-white border-3 border-black p-5 shadow-neb">
-          <h3 className="text-sm font-black uppercase tracking-wider mb-4">Severity Distribution</h3>
+        <div className="bg-dark-900 border border-dark-700 rounded-lg p-5">
+          <h3 className="text-sm font-semibold text-white mb-4">Severity Distribution</h3>
           {severityData.length > 0 ? (
             <ResponsiveContainer width="100%" height={200}>
               <PieChart>
-                <Pie data={severityData} cx="50%" cy="50%" innerRadius={55} outerRadius={80} dataKey="value" stroke="#000" strokeWidth={2}>
+                <Pie
+                  data={severityData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={55}
+                  outerRadius={80}
+                  dataKey="value"
+                  stroke="none"
+                >
                   {severityData.map((entry, index) => (
                     <Cell key={index} fill={entry.color} />
                   ))}
                 </Pie>
-                <Tooltip contentStyle={{ backgroundColor: '#fff', border: '3px solid #000', borderRadius: 0, color: '#000', fontWeight: 700 }} />
-                <Legend verticalAlign="bottom" height={36} wrapperStyle={{ fontWeight: 700, fontSize: '12px' }} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: '#1e293b',
+                    border: '1px solid #334155',
+                    borderRadius: '8px',
+                    color: '#f1f5f9',
+                  }}
+                />
+                <Legend verticalAlign="bottom" height={36} wrapperStyle={{ color: '#94a3b8', fontSize: '12px' }}/>
               </PieChart>
             </ResponsiveContainer>
           ) : (
-            <div className="flex items-center justify-center h-[200px] text-gray-400 text-sm font-bold">No data yet</div>
+            <div className="flex items-center justify-center h-[200px] text-dark-500 text-sm">
+              No data yet
+            </div>
           )}
         </div>
 
         {/* Severity Bar Chart */}
-        <div className="bg-white border-3 border-black p-5 shadow-neb">
-          <h3 className="text-sm font-black uppercase tracking-wider mb-4">Vulnerability Count</h3>
+        <div className="bg-dark-900 border border-dark-700 rounded-lg p-5">
+          <h3 className="text-sm font-semibold text-white mb-4">Vulnerability Count</h3>
           {severityData.length > 0 ? (
             <ResponsiveContainer width="100%" height={200}>
               <BarChart data={severityData}>
-                <XAxis dataKey="name" tick={{ fill: '#000', fontSize: 11, fontWeight: 700 }} axisLine={{ stroke: '#000', strokeWidth: 2 }} tickLine={false} />
-                <YAxis tick={{ fill: '#000', fontSize: 11, fontWeight: 700 }} axisLine={{ stroke: '#000', strokeWidth: 2 }} tickLine={false} />
-                <Tooltip contentStyle={{ backgroundColor: '#fff', border: '3px solid #000', borderRadius: 0, color: '#000', fontWeight: 700 }} />
-                <Bar dataKey="value" radius={0} stroke="#000" strokeWidth={2}>
+                <XAxis dataKey="name" tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: '#94a3b8', fontSize: 11 }} axisLine={false} tickLine={false} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: '#1e293b',
+                    border: '1px solid #334155',
+                    borderRadius: '8px',
+                    color: '#f1f5f9',
+                  }}
+                />
+                <Bar dataKey="value" radius={[4, 4, 0, 0]}>
                   {severityData.map((entry, index) => (
                     <Cell key={index} fill={entry.color} />
                   ))}
@@ -195,66 +265,75 @@ export default function Dashboard() {
               </BarChart>
             </ResponsiveContainer>
           ) : (
-            <div className="flex items-center justify-center h-[200px] text-gray-400 text-sm font-bold">No data yet</div>
+            <div className="flex items-center justify-center h-[200px] text-dark-500 text-sm">
+              No data yet
+            </div>
           )}
         </div>
 
         {/* System Health */}
-        <div className="bg-white border-3 border-black p-5 shadow-neb">
-          <h3 className="text-sm font-black uppercase tracking-wider mb-4">System Health</h3>
-          <div className="space-y-3">
-            {[
-              { label: 'Backend API', status: health ? 'Online' : 'Offline', ok: !!health },
-              { label: 'Nmap', status: health?.scanners?.nmap ? 'Ready' : 'Mock Mode', ok: health?.scanners?.nmap },
-              { label: 'Nuclei', status: health?.scanners?.nuclei ? 'Ready' : 'Mock Mode', ok: health?.scanners?.nuclei },
-              { label: 'OpenVAS', status: health?.scanners?.openvas ? 'Ready' : 'Mock Mode', ok: health?.scanners?.openvas },
-              { label: 'Nessus', status: health?.scanners?.nessus ? 'Ready' : 'Mock Mode', ok: health?.scanners?.nessus },
-              { label: 'Burp Suite', status: health?.scanners?.burp ? 'Ready' : 'Mock Mode', ok: health?.scanners?.burp },
-              { label: 'OWASP ZAP', status: health?.scanners?.zap ? 'Ready' : 'Mock Mode', ok: health?.scanners?.zap },
-            ].map((item, i) => (
-              <div key={i} className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase">{item.label}</span>
-                <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black ${item.ok ? 'bg-neo-green' : 'bg-gray-200'}`}>
-                  {item.status}
-                </span>
-              </div>
-            ))}
+        <div className="bg-dark-900 border border-dark-700 rounded-lg p-5">
+          <h3 className="text-sm font-semibold text-white mb-4">System Health</h3>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-dark-400">Backend API</span>
+              <span className={`px-2 py-0.5 text-xs rounded ${health ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                {health ? 'Online' : 'Offline'}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-dark-400">Nmap Scanner</span>
+              <span className={`px-2 py-0.5 text-xs rounded ${health?.scanners?.nmap ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
+                {health?.scanners?.nmap ? 'Ready' : 'Mock Mode'}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-dark-400">Nuclei Scanner</span>
+              <span className={`px-2 py-0.5 text-xs rounded ${health?.scanners?.nuclei ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
+                {health?.scanners?.nuclei ? 'Ready' : 'Mock Mode'}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-dark-400">RAG Engine</span>
+              <span className="px-2 py-0.5 text-xs bg-yellow-500/20 text-yellow-400 rounded">Local Mode</span>
+            </div>
           </div>
         </div>
       </div>
 
       {/* Recent Scans */}
-      <div className="bg-white border-3 border-black shadow-neb overflow-hidden">
-        <div className="p-4 border-b-[3px] border-black bg-neo-yellow">
-          <h3 className="text-sm font-black uppercase tracking-wider">Recent Scans</h3>
+      <div className="bg-dark-900 border border-dark-700 rounded-lg overflow-hidden">
+        <div className="p-5 border-b border-dark-700">
+          <h3 className="text-sm font-semibold text-white">Recent Scans</h3>
         </div>
-        <div className="divide-y-[3px] divide-black">
+        <div className="divide-y divide-dark-700">
           {stats?.recent_scans?.length > 0 ? (
             stats.recent_scans.map((scan) => (
-              <button
+              <div
                 key={scan.id}
-                className="px-5 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-gray-50 cursor-pointer transition-colors w-full text-left"
+                className="px-5 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-dark-800 cursor-pointer transition-colors"
                 onClick={() => navigate(`/scans?scan=${scan.id}`)}
-                aria-label={`View scan for ${scan.target}`}
               >
                 <div className="flex items-center gap-3 min-w-0">
-                  <span className="text-sm font-bold truncate font-mono">{scan.target}</span>
-                  <span className={`px-2 py-0.5 text-[10px] font-black uppercase border-2 border-black flex-shrink-0 ${statusColors[scan.status]}`}>
+                  <div className="text-sm font-medium text-white truncate">{scan.target}</div>
+                  <span className={`px-2 py-0.5 text-xs rounded flex-shrink-0 ${statusColors[scan.status]}`}>
                     {scan.status}
                   </span>
                 </div>
                 <div className="flex items-center gap-3 text-xs flex-shrink-0">
-                  <span className="font-bold">{scan.total_vulnerabilities} vulns</span>
-                  <span className="text-gray-500 hidden sm:inline font-mono text-[10px]">
+                  <span className="text-dark-400">
+                    {scan.total_vulnerabilities} vulns
+                  </span>
+                  <span className="text-dark-500 hidden sm:inline">
                     {new Date(scan.started_at).toLocaleString()}
                   </span>
-                  <ChevronRight className="w-4 h-4" />
+                  <ChevronRight className="w-4 h-4 text-dark-500" />
                 </div>
-              </button>
+              </div>
             ))
           ) : (
-            <div className="p-8 text-center text-gray-400 text-sm font-bold uppercase">
-              No scans yet. Start a scan from the dashboard.
+            <div className="p-8 text-center text-dark-500 text-sm">
+              No scans yet. Start a scan from the dashboard or Scan Console.
             </div>
           )}
         </div>

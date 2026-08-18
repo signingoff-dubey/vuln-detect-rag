@@ -32,8 +32,6 @@ export const getAttackPaths = (id) => api.get(`/scans/${id}/attack-paths`)
 export const listScans = () => api.get('/scans')
 export const deleteScan = (id) => api.delete(`/scans/${id}`)
 export const exportScan = (id, format) => api.get(`/scans/${id}/export?format=${format}`, { responseType: 'blob' })
-// Final step of the scan flow: the AI explains the report in plain language.
-export const explainScan = (id, question) => api.post(`/scans/${id}/explain`, null, { params: question ? { question } : {} })
 export const getStats = () => api.get('/stats')
 export const getBackendLogs = () => api.get('/logs')
 
@@ -55,16 +53,6 @@ export const deleteFavorite = (id) => api.delete(`/favorites/${id}`)
 
 // LLM Status
 export const getLLMStatus = () => api.get('/llm-status')
-
-// Provider + RAG controls (used for research: isolate a backend, or turn
-// retrieval off entirely to measure the no-RAG baseline)
-export const getProviders = () => api.get('/providers')
-export const toggleProvider = (provider, enabled) => api.post(`/providers/${provider}`, null, { params: { enabled } })
-export const getProviderModels = (provider) => api.get(`/providers/${provider}/models`)
-export const setProviderModel = (provider, model) => api.post(`/providers/${provider}/model`, null, { params: { model } })
-export const getEvalMetrics = () => api.get('/eval-metrics')
-export const getRagConfig = () => api.get('/rag-config')
-export const setRagConfig = (enabled) => api.post('/rag-config', null, { params: { enabled } })
 
 export default api
 

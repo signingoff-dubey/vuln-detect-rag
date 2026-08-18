@@ -1,5 +1,6 @@
 import logging
 import subprocess
+import xml.etree.ElementTree as ET
 import os
 import shutil
 from scanners.base import ScannerAdapter, ScanVulnerability
@@ -7,77 +8,26 @@ from config import settings
 
 logger = logging.getLogger("vulndetect")
 
-try:
-    import defusedxml.ElementTree as ET
-except ImportError:
-    import xml.etree.ElementTree as ET
-
-    logger.warning("defusedxml not installed; using stdlib XML parser (less secure)")
-
 
 class NmapScanner(ScannerAdapter):
     name = "nmap"
 
-    # Common installation paths for different OS
-    COMMON_PATHS = {
-        "win32": [
-            r"C:\Program Files (x86)\Nmap\nmap.exe",
-            r"C:\Program Files\Nmap\nmap.exe",
-            r"C:\nmap\nmap.exe",
-            r"C:\tools\nmap\nmap.exe",
-        ],
-        "linux": ["/usr/bin/nmap", "/usr/local/bin/nmap"],
-        "darwin": ["/usr/local/bin/nmap", "/opt/homebrew/bin/nmap"],
-    }
-
     def _get_binary(self) -> str | None:
         """Get the nmap binary path from config or system PATH."""
-        # First check config/environment variable
         path = settings.NMAP_PATH
         if path and os.path.isfile(path):
             return path
         if path and shutil.which(path):
             return path
-
-        # Try system PATH
-        result = shutil.which("nmap")
-        if result:
-            return result
-
-        # Try common installation paths
-        import sys
-
-        platform = sys.platform
-        for path in self.COMMON_PATHS.get(platform, []):
-            if os.path.isfile(path):
-                return path
-
-        # Try other platforms too
-        for paths in self.COMMON_PATHS.values():
-            for path in paths:
-                if os.path.isfile(path):
-                    return path
-
-        return None
+        return shutil.which("nmap")
 
     def is_available(self) -> bool:
         return self._get_binary() is not None
-
-    @staticmethod
-    def _validate_target(target: str) -> bool:
-        """Validate target contains only safe characters before subprocess use."""
-        import re
-
-        return bool(re.match(r"^[a-zA-Z0-9._-]+$", target))
 
     def scan(self, target: str) -> list[ScanVulnerability]:
         binary = self._get_binary()
         if not binary:
             logger.warning("Nmap not available, using mock data for %s", target)
-            return self._mock_scan(target)
-
-        if not self._validate_target(target):
-            logger.error("Invalid target rejected: %s", target)
             return self._mock_scan(target)
 
         try:

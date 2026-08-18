@@ -12,50 +12,14 @@ logger = logging.getLogger("vulndetect")
 class NucleiScanner(ScannerAdapter):
     name = "nuclei"
 
-    # Common installation paths for different OS
-    COMMON_PATHS = {
-        "win32": [
-            r"C:\tools\nuclei\nuclei.exe",
-            r"C:\Program Files\Nuclei\nuclei.exe",
-            r"C:\nuclei\nuclei.exe",
-        ],
-        "linux": ["/usr/bin/nuclei", "/usr/local/bin/nuclei", "/root/go/bin/nuclei"],
-        "darwin": [
-            "/usr/local/bin/nuclei",
-            "/opt/homebrew/bin/nuclei",
-            "/Users/*/go/bin/nuclei",
-        ],
-    }
-
     def _get_binary(self) -> str | None:
         """Get the nuclei binary path from config or system PATH."""
-        # First check config/environment variable
         path = settings.NUCLEI_PATH
         if path and os.path.isfile(path):
             return path
         if path and shutil.which(path):
             return path
-
-        # Try system PATH
-        result = shutil.which("nuclei")
-        if result:
-            return result
-
-        # Try common installation paths
-        import sys
-
-        platform = sys.platform
-        for path in self.COMMON_PATHS.get(platform, []):
-            if os.path.isfile(path):
-                return path
-
-        # Try other platforms too
-        for paths in self.COMMON_PATHS.values():
-            for path in paths:
-                if os.path.isfile(path):
-                    return path
-
-        return None
+        return shutil.which("nuclei")
 
     def is_available(self) -> bool:
         return self._get_binary() is not None

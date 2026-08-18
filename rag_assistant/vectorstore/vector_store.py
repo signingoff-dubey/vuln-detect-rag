@@ -3,7 +3,6 @@
 import os
 import hashlib
 import logging
-import tempfile
 from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass
 from datetime import datetime
@@ -106,71 +105,51 @@ class BaseVectorStore(ABC):
     @abstractmethod
     def count(self) -> int:
         """Get total document count.
-
+        
         Returns:
             Document count
         """
         pass
 
-    def delete_where(self, filter_metadata: Dict[str, Any]) -> int:
-        """Delete documents matching a metadata filter.
-
-        Backends that cannot support this return 0.
-        """
-        return 0
-
-
-#: Collection name used by every component that talks to the vector store.
-#: Kept in one place so the writer (indexing) and the reader (retrieval) can
-#: never drift apart — a mismatch here silently yields an empty knowledge base.
-DEFAULT_COLLECTION = os.getenv('CHROMA_COLLECTION', 'cve_knowledge')
-
 
 class ChromaVectorStore(BaseVectorStore):
     """ChromaDB vector store implementation."""
-
-    def __init__(self, collection_name: Optional[str] = None,
+    
+    def __init__(self, collection_name: str = "cve_knowledge",
                  persist_directory: Optional[str] = None,
                  host: Optional[str] = None, port: int = 8000):
         """Initialize ChromaDB store.
-
+        
         Args:
             collection_name: Collection name
             persist_directory: Local persistence directory
             host: Remote host
             port: Remote port
         """
-        super().__init__(collection_name or DEFAULT_COLLECTION)
-
+        super().__init__(collection_name)
+        
         default_persist_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'backend', 'data', 'chroma'))
         self.persist_directory = persist_directory or os.getenv('VECTOR_STORE_PATH', default_persist_dir)
         self.host = host or os.getenv('CHROMA_HOST', 'localhost')
         self.port = port or int(os.getenv('CHROMA_PORT', 8000))
-
+        
         self._client = None
         self._collection = None
-
+    
     @property
     def client(self):
-        """Get or create ChromaDB client.
-
-        Uses PersistentClient so documents survive a restart. A bare
-        ``Client(Settings(persist_directory=...))`` does NOT persist: Chroma's
-        ``is_persistent`` defaults to False, so that form is in-memory only and
-        every restart starts from an empty collection.
-        """
+        """Get or create ChromaDB client."""
         if self._client is None:
             try:
                 import chromadb
 
-                remote_host = os.getenv('CHROMA_HOST')
-                if remote_host:
-                    self._client = chromadb.HttpClient(host=remote_host, port=self.port)
-                    logger.info("Using remote ChromaDB at %s:%s", remote_host, self.port)
-                else:
-                    os.makedirs(self.persist_directory, exist_ok=True)
+                if os.path.exists(self.persist_directory):
                     self._client = chromadb.PersistentClient(path=self.persist_directory)
-                    logger.info("Using persistent ChromaDB at %s", self.persist_directory)
+                else:
+                    self._client = chromadb.HttpClient(
+                        host=self.host,
+                        port=self.port
+                    )
             except ImportError:
                 logger.error("ChromaDB package not installed")
                 raise
@@ -193,140 +172,68 @@ class ChromaVectorStore(BaseVectorStore):
     def add_document(self, document: Document) -> bool:
         """Add single document to store."""
         return self.add_documents([document])
-
+    
     def add_documents(self, documents: List[Document]) -> bool:
-        """Add multiple documents.
-
-        Embeddings computed by our own EmbeddingService are handed to Chroma
-        explicitly. Without this Chroma silently falls back to its own default
-        embedding function, so writes and reads end up in different vector
-        spaces and similarity scores become meaningless.
-
-        Uses upsert so re-indexing the same corpus updates rows instead of
-        raising on duplicate IDs.
-        """
+        """Add multiple documents."""
         try:
             if not documents:
                 return True
-
+            
             ids = [doc.id for doc in documents]
             contents = [doc.content for doc in documents]
-            metadatas = [self._clean_metadata(doc.metadata) for doc in documents]
-            embeddings = [doc.embedding for doc in documents]
-
-            payload = {
-                "ids": ids,
-                "documents": contents,
-                "metadatas": metadatas,
-            }
-            if all(e is not None for e in embeddings):
-                payload["embeddings"] = embeddings
-            else:
-                missing = sum(1 for e in embeddings if e is None)
-                logger.warning(
-                    "%d/%d documents have no embedding; letting Chroma embed them "
-                    "(this can mismatch the query embedding space)",
-                    missing, len(documents),
-                )
-
-            self.collection.upsert(**payload)
-
-            logger.info(f"Upserted {len(documents)} documents into ChromaDB "
-                        f"collection '{self.collection_name}'")
+            metadatas = [doc.metadata for doc in documents]
+            embeddings = [doc.embedding for doc in documents if doc.embedding]
+            
+            self.collection.add(
+                ids=ids,
+                documents=contents,
+                metadatas=metadatas
+            )
+            
+            logger.info(f"Added {len(documents)} documents to ChromaDB")
             return True
-
+            
         except Exception as e:
             logger.error(f"Failed to add documents: {e}")
             return False
-
-    @staticmethod
-    def _clean_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
-        """Coerce metadata to Chroma-safe scalars.
-
-        Chroma only accepts str/int/float/bool/None. Lists (e.g. references)
-        and dicts are flattened rather than dropped so they stay filterable.
-        """
-        clean: Dict[str, Any] = {}
-        for key, value in (metadata or {}).items():
-            if value is None or isinstance(value, (str, int, float, bool)):
-                clean[key] = value
-            elif isinstance(value, (list, tuple, set)):
-                clean[key] = ", ".join(str(v) for v in value)
-            else:
-                clean[key] = str(value)
-        return clean
-
+    
     def search(self, query_embedding: List[float], top_k: int = 5,
                filter_metadata: Optional[Dict[str, Any]] = None) -> List[SearchResult]:
         """Search for similar documents."""
         try:
-            available = self.count()
-            if available == 0:
-                logger.warning(
-                    "Vector store collection '%s' is empty — no documents to retrieve. "
-                    "Run the CVE seeding script to populate it.",
-                    self.collection_name,
-                )
-                return []
-
             results = self.collection.query(
                 query_embeddings=[query_embedding],
-                n_results=min(top_k, available),
-                where=filter_metadata or None,
+                n_results=top_k,
+                where=filter_metadata
             )
-
+            
             search_results = []
             if results and results.get('documents'):
                 for i, doc_content in enumerate(results['documents'][0]):
                     metadata = results['metadatas'][0][i] if results.get('metadatas') else {}
                     distance = results['distances'][0][i] if results.get('distances') else 0
                     doc_id = results['ids'][0][i] if results.get('ids') else ''
-
+                    
                     document = Document(
                         id=doc_id,
                         content=doc_content,
-                        metadata=metadata or {},
+                        metadata=metadata,
                         embedding=None
                     )
-
+                    
+                    score = 1 - distance if distance is not None else 0
+                    
                     search_results.append(SearchResult(
                         document=document,
-                        score=self._distance_to_score(distance),
-                        metadata=metadata or {}
+                        score=score,
+                        metadata=metadata
                     ))
-
+            
             return search_results
-
+            
         except Exception as e:
             logger.error(f"Search failed: {e}")
             return []
-
-    @staticmethod
-    def _distance_to_score(distance: Optional[float]) -> float:
-        """Convert a cosine distance into a 0..1 similarity score.
-
-        The collection is created with ``hnsw:space = cosine``, so distance is
-        in [0, 2]. The old ``1 - distance`` mapping produced negative scores for
-        anything past orthogonal, which broke score thresholding.
-        """
-        if distance is None:
-            return 0.0
-        return max(0.0, min(1.0, 1.0 - (float(distance) / 2.0)))
-
-    def delete_where(self, filter_metadata: Dict[str, Any]) -> int:
-        """Delete every document matching a metadata filter.
-
-        Used to re-index a scan without accumulating stale duplicates.
-        """
-        try:
-            existing = self.collection.get(where=filter_metadata)
-            ids = existing.get('ids', []) if existing else []
-            if ids:
-                self.collection.delete(ids=ids)
-            return len(ids)
-        except Exception as e:
-            logger.error(f"Failed to delete by filter {filter_metadata}: {e}")
-            return 0
     
     def delete(self, document_id: str) -> bool:
         """Delete document by ID."""
@@ -365,84 +272,56 @@ class ChromaVectorStore(BaseVectorStore):
 class FAISSVectorStore(BaseVectorStore):
     """FAISS vector store implementation."""
     
-    def __init__(self, collection_name: Optional[str] = None,
+    def __init__(self, collection_name: str = "vulnerability_docs",
                  index_path: Optional[str] = None):
         """Initialize FAISS store.
-
+        
         Args:
             collection_name: Collection name
             index_path: Path to save/load index
         """
-        collection_name = collection_name or DEFAULT_COLLECTION
         super().__init__(collection_name)
-        # tempfile.gettempdir() rather than a hardcoded /tmp so the index also
-        # works on Windows, which is this project's primary target.
-        self.index_path = index_path or os.path.join(
-            tempfile.gettempdir(), f"faiss_{collection_name}"
-        )
-
+        self.index_path = index_path or f"/tmp/faiss_{collection_name}"
+        
         self._index = None
-        self._dimension: Optional[int] = None
         self._documents: Dict[str, Document] = {}
         self._doc_ids: List[str] = []
-        self._load_index()
-
-    def _ensure_index(self, dimension: int):
-        """Create the index once the true embedding dimension is known.
-
-        The dimension is taken from the first embedding rather than hardcoded:
-        all-MiniLM-L6-v2 is 384-dim, nomic-embed-text is 768, OpenAI is 1536.
-        A fixed constant silently corrupts every store but one.
-        """
-        if self._index is None:
-            import faiss
-            self._dimension = dimension
-            self._index = faiss.IndexFlatIP(dimension)
-            logger.info("Created FAISS index with dimension %d", dimension)
-        elif self._dimension != dimension:
-            raise ValueError(
-                f"Embedding dimension {dimension} does not match existing FAISS "
-                f"index dimension {self._dimension}. Delete {self.index_path} "
-                f"to rebuild after changing the embedding model."
-            )
-        return self._index
-
+    
     @property
     def index(self):
-        """Get the FAISS index (must have been created by _ensure_index)."""
+        """Get or create FAISS index."""
         if self._index is None:
-            raise RuntimeError(
-                "FAISS index not initialized — add documents before searching."
-            )
+            try:
+                import faiss
+                dimension = 1536
+                self._index = faiss.IndexFlatIP(dimension)
+            except ImportError:
+                logger.error("FAISS package not installed")
+                raise
         return self._index
-
+    
     def add_document(self, document: Document) -> bool:
         """Add single document."""
         return self.add_documents([document])
-
+    
     def add_documents(self, documents: List[Document]) -> bool:
         """Add multiple documents."""
         try:
             import numpy as np
             import faiss
-
-            added = 0
+            
             for doc in documents:
-                if not doc.embedding:
-                    continue
-                index = self._ensure_index(len(doc.embedding))
-
-                self._documents[doc.id] = doc
-                self._doc_ids.append(doc.id)
-
-                embedding = np.array([doc.embedding], dtype=np.float32)
-                faiss.normalize_L2(embedding)
-                index.add(embedding)
-                added += 1
-
-            logger.info(f"Added {added} documents to FAISS")
+                if doc.embedding:
+                    self._documents[doc.id] = doc
+                    self._doc_ids.append(doc.id)
+                    
+                    embedding = np.array([doc.embedding], dtype=np.float32)
+                    faiss.normalize_L2(embedding)
+                    self.index.add(embedding)
+            
+            logger.info(f"Added {len(documents)} documents to FAISS")
             return self._save_index()
-
+            
         except Exception as e:
             logger.error(f"Failed to add documents: {e}")
             return False
@@ -453,14 +332,10 @@ class FAISSVectorStore(BaseVectorStore):
         try:
             import numpy as np
             import faiss
-
-            if self._index is None or not self._doc_ids:
-                logger.warning("FAISS index is empty — no documents to retrieve.")
-                return []
-
+            
             query = np.array([query_embedding], dtype=np.float32)
             faiss.normalize_L2(query)
-
+            
             distances, indices = self.index.search(query, min(top_k, len(self._doc_ids)))
             
             results = []
@@ -523,38 +398,22 @@ class FAISSVectorStore(BaseVectorStore):
             return False
     
     def _load_index(self) -> bool:
-        """Load index from disk.
-
-        Called from __init__ so a persisted index is actually reused; previously
-        this existed but was never invoked, so every process started empty.
-        """
+        """Load index from disk."""
         try:
-            index_file = os.path.join(self.index_path, "index.faiss")
-            docs_file = os.path.join(self.index_path, "documents.pkl")
-            if not os.path.exists(index_file):
-                return False
-
             import faiss
             import pickle
-
-            self._index = faiss.read_index(index_file)
-            self._dimension = self._index.d
-
-            if os.path.exists(docs_file):
-                with open(docs_file, 'rb') as f:
+            
+            if os.path.exists(f"{self.index_path}/index.faiss"):
+                self._index = faiss.read_index(f"{self.index_path}/index.faiss")
+                
+            if os.path.exists(f"{self.index_path}/documents.pkl"):
+                with open(f"{self.index_path}/documents.pkl", 'rb') as f:
                     self._documents, self._doc_ids = pickle.load(f)
-
-            logger.info("Loaded FAISS index (%d vectors) from %s",
-                        len(self._doc_ids), self.index_path)
+            
             return True
         except Exception as e:
             logger.error(f"Failed to load index: {e}")
             return False
-
-    def delete_where(self, filter_metadata: Dict[str, Any]) -> int:
-        """FAISS IndexFlatIP has no stable deletion; rebuild is required."""
-        logger.warning("FAISS backend does not support metadata deletion")
-        return 0
 
 
 class VectorStoreFactory:

@@ -2,23 +2,7 @@ from scanners.base import ScannerAdapter, ScanVulnerability
 
 
 class NessusScanner(ScannerAdapter):
-    """Tenable Nessus adapter — simulated only.
-
-    Nessus Essentials is free but capped at 16 IP addresses and gated behind
-    registration and an activation code, so it cannot be presented as a freely
-    runnable integration. This adapter returns clearly-labelled sample data;
-    every finding is tagged type="mock" so the API, UI and assistant all mark
-    it as simulated.
-    """
-
     name = "nessus"
-    free = False
-    requires_licence = True
-    licence_note = (
-        "Nessus Essentials is free but limited to 16 IPs and requires "
-        "registration; Nessus Professional is a paid product. This adapter "
-        "returns simulated data only."
-    )
 
     def is_available(self) -> bool:
         return False  # Requires Nessus installation

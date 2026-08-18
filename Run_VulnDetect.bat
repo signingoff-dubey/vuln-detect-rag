@@ -1,198 +1,72 @@
 @echo off
 setlocal enabledelayedexpansion
-title VulnDetectRAG v4.0 Startup
+title VulnDetectRAG Startup
 color 0b
 
-:: Always operate from the repository root, whatever directory the user
-:: launched this from.
-cd /d "%~dp0"
-
-set "BACKEND_HOST=127.0.0.1"
-set "BACKEND_PORT=8000"
-set "FRONTEND_PORT=5173"
-set "VENV_PY=%~dp0backend\venv\Scripts\python.exe"
-
 echo ===================================================
-echo    VulnDetectRAG v4.0 - Vulnerability Intelligence Platform
-echo.
-echo    Network      : Nmap, Nuclei, OpenVAS
-echo    Web          : OWASP ZAP, Nikto, testssl/sslyze, WhatWeb
-echo    Supply chain : Trivy, OSV-Scanner, Grype
-echo    Commercial   : Burp (licence), Nessus (simulated)
-echo.
-echo    AI: Groq / Gemini / OpenRouter / NVIDIA, Ollama offline
+echo    Starting VulnDetectRAG Platform
 echo ===================================================
 echo.
 
-:: ---------------------------------------------------------------
-:: 1. Prerequisites
-:: ---------------------------------------------------------------
+:: 1. Check Prerequisites
 echo [*] Checking for Python...
 where python >nul 2>nul
 if %ERRORLEVEL% neq 0 (
-    echo [ERROR] Python is not installed or not in PATH. Please install Python 3.10+
-    echo         Download from: https://www.python.org/downloads/
-    pause
-    exit /b 1
+    echo [WARNING] Python is not installed or not in PATH. Please install Python 3.10+
 )
 
 echo [*] Checking for Node.js (npm)...
 where npm >nul 2>nul
 if %ERRORLEVEL% neq 0 (
-    echo [ERROR] Node.js is not installed or not in PATH. Please install Node.js 18+
-    echo         Download from: https://nodejs.org/
-    pause
-    exit /b 1
+    echo [WARNING] Node.js is not installed or not in PATH. Please install Node.js 18+
 )
 
-:: Scanners are all optional. A missing tool reports that it did not run;
-:: it never fabricates findings.
-echo.
-echo [*] Checking optional scanners (missing ones are simply unavailable)...
-for %%T in (nmap nuclei nikto whatweb trivy osv-scanner grype sslyze) do (
-    where %%T >nul 2>nul
-    if !ERRORLEVEL! neq 0 (
-        echo     [--] %%T not found
-    ) else (
-        echo     [OK] %%T
-    )
-)
-
-:: ---------------------------------------------------------------
-:: 2. AI provider configuration
-:: ---------------------------------------------------------------
-echo.
-echo [*] Checking AI provider configuration...
-if not exist "backend\.env" (
-    echo [WARNING] backend\.env not found.
-    echo           Copy backend\.env.example to backend\.env and add at least
-    echo           one free API key, or install Ollama to run fully offline.
-) else (
-    echo     [OK] backend\.env present
-)
-
-:: Ollama is the offline fallback, not the default. It is only pulled when
-:: it is actually installed - this must never block startup.
+echo [*] Checking for Ollama...
 where ollama >nul 2>nul
-if !ERRORLEVEL! neq 0 (
-    echo     [--] Ollama not installed ^(cloud providers will be used^)
+if %ERRORLEVEL% neq 0 (
+    echo [WARNING] Ollama is not installed. AI features will be disabled.
+    echo Please install Ollama from https://ollama.com/
+    echo.
 ) else (
-    echo     [OK] Ollama installed ^(offline fallback available^)
+    echo [*] Ensuring Ollama model qwen3.5:9b is downloaded...
+    echo Note: This may take a while if downloading for the first time.
+    call ollama pull qwen3.5:9b >nul 2>nul
 )
 
 echo.
-echo [PRIVACY] Cloud providers are enabled by default and receive your scan
-echo           findings and questions. To keep everything on this machine,
-echo           set LLM_PROVIDER=ollama in backend\.env, or disable each cloud
-echo           provider from the Settings page in the UI.
+:: 2. Backend Setup
+echo [1/3] Starting FastApi Backend...
+cd backend
+if not exist "venv\" (
+    echo [*] Creating Python virtual environment...
+    python -m venv venv
+)
+start "VulnDetectRAG Backend (Do not close)" cmd /k "call venv\Scripts\activate.bat && pip install -r requirements.txt && python main.py"
+cd ..
+
 echo.
-
-:: ---------------------------------------------------------------
-:: 3. Sanity-check the layout
-:: ---------------------------------------------------------------
-if not exist "backend\" (
-    echo [ERROR] backend\ directory not found. Run this from the project root.
-    pause
-    exit /b 1
+:: 3. Frontend Setup
+echo [2/3] Starting React Frontend...
+cd frontend
+if not exist "node_modules\" (
+    echo [*] Installing NPM dependencies...
+    start /wait "Installing Node Modules" cmd /c "npm install"
 )
-if not exist "frontend\" (
-    echo [ERROR] frontend\ directory not found. Run this from the project root.
-    pause
-    exit /b 1
-)
+start "VulnDetectRAG Frontend (Do not close)" cmd /k "npm run dev"
+cd ..
 
-:: ---------------------------------------------------------------
-:: 4. Backend
-:: ---------------------------------------------------------------
-echo [1/4] Preparing FastAPI backend...
-
-:: A venv directory can exist yet be unusable - if the machine's Python was
-:: upgraded or moved, the venv's python.exe still points at the old install and
-:: every command fails with "did not find executable". Existence is therefore
-:: not a good enough test; the interpreter has to actually run.
-set "VENV_OK="
-if exist "%VENV_PY%" (
-    "%VENV_PY%" -c "import sys" >nul 2>nul
-    if !ERRORLEVEL! equ 0 set "VENV_OK=1"
-)
-
-if not defined VENV_OK (
-    if exist "backend\venv\" (
-        echo [WARNING] Existing virtual environment is broken, rebuilding it...
-        rmdir /s /q "backend\venv"
-    ) else (
-        echo [*] Creating Python virtual environment...
-    )
-    python -m venv backend\venv
-    if !ERRORLEVEL! neq 0 (
-        echo [ERROR] Failed to create the virtual environment.
-        pause
-        exit /b 1
-    )
-)
-
-echo [*] Installing Python dependencies...
-:: requirements.txt lives at the repository root, not in backend\.
-"%VENV_PY%" -m pip install -r requirements.txt -q
-if !ERRORLEVEL! neq 0 (
-    echo [ERROR] Dependency installation failed. See the messages above.
-    pause
-    exit /b 1
-)
-
-:: ---------------------------------------------------------------
-:: 5. Seed the knowledge base BEFORE the backend starts
-:: ---------------------------------------------------------------
-:: Ordering matters: the RAG assistant reports an empty corpus if it starts
-:: against an unseeded store, and seeding is idempotent (upsert), so running
-:: it every launch is safe.
-echo [2/4] Seeding the CVE knowledge base ^(idempotent^)...
-if exist "scripts\seed_cve_data.py" (
-    "%VENV_PY%" scripts\seed_cve_data.py
-    if !ERRORLEVEL! neq 0 (
-        echo [WARNING] Seeding failed. The app will still start, but the
-        echo           assistant will have no CVE corpus to retrieve from.
-    )
-) else (
-    echo [INFO] scripts\seed_cve_data.py not found, skipping.
-)
-
-echo [3/4] Starting backend on http://%BACKEND_HOST%:%BACKEND_PORT% ...
-:: Bound to 127.0.0.1 by main.py. Started from backend\ because main.py
-:: resolves "main:app" relative to its own directory.
-start "VulnDetectRAG Backend (Do not close)" cmd /k "cd /d "%~dp0backend" && "%VENV_PY%" main.py"
-
-:: ---------------------------------------------------------------
-:: 6. Frontend
-:: ---------------------------------------------------------------
-echo [4/4] Starting frontend on http://localhost:%FRONTEND_PORT% ...
-if not exist "frontend\node_modules\" (
-    echo [*] Installing NPM dependencies ^(first run only^)...
-    pushd frontend
-    call npm install
-    popd
-)
-:: Vite proxies /api to the backend, so the browser only ever talks to 5173.
-start "VulnDetectRAG Frontend (Do not close)" cmd /k "cd /d "%~dp0frontend" && npm run dev"
-
-:: ---------------------------------------------------------------
-:: 7. Open the UI
-:: ---------------------------------------------------------------
 echo.
-echo [*] Waiting for services to initialise...
-timeout /t 10 /nobreak >nul
-start http://localhost:%FRONTEND_PORT%
+:: 4. Launch UI
+echo [3/3] Waiting for services to initialize (5 seconds)...
+timeout /t 5 /nobreak >nul
+
+echo [*] Opening browser to application...
+start http://localhost:5173
 
 echo.
 echo ===================================================
-echo    VulnDetectRAG v4.0 is running.
-echo.
-echo    Frontend : http://localhost:%FRONTEND_PORT%
-echo    Backend  : http://%BACKEND_HOST%:%BACKEND_PORT%
-echo    API docs : http://%BACKEND_HOST%:%BACKEND_PORT%/docs
-echo    Health   : http://%BACKEND_HOST%:%BACKEND_PORT%/api/health
-echo.
-echo    Leave both terminal windows open.
-echo    To stop: close them, or press Ctrl+C in each.
+echo    Platform is now running!
+echo    Please leave the two black terminal windows 
+echo    open. To stop the servers, simply close them.
 echo ===================================================
 pause
