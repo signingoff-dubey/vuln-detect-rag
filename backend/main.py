@@ -84,6 +84,11 @@ async def lifespan(app):
     ensure_dirs()
     init_db()
     logger.info("Database initialized")
+    from services.orchestrator import orchestrator_service as _orch
+
+    interrupted = _orch.fail_interrupted_scans()
+    if interrupted:
+        logger.warning("Marked %d interrupted scan(s) as failed", interrupted)
     _warm_provider_caches()
     yield
     from services.orchestrator import orchestrator_service

@@ -70,6 +70,30 @@ async def get_attack_paths(scan_id: int):
     return attack_path_service.compute_attack_paths(scan_id)
 
 
+@router.get("/scans/{scan_id}/briefing")
+async def get_briefing(scan_id: int):
+    """The stored briefing, generated automatically when the scan finished."""
+    from services import briefing_service
+
+    if not orchestrator_service.get_scan(scan_id):
+        raise HTTPException(status_code=404, detail="Scan not found")
+    return await run_in_threadpool(briefing_service.get_briefing, scan_id)
+
+
+@router.post("/scans/{scan_id}/briefing/regenerate")
+async def regenerate_briefing(scan_id: int, background_tasks: BackgroundTasks):
+    from services import briefing_service
+
+    scan = orchestrator_service.get_scan(scan_id)
+    if not scan:
+        raise HTTPException(status_code=404, detail="Scan not found")
+    if scan.status != "completed":
+        raise HTTPException(status_code=409, detail="The scan has not completed yet")
+    await run_in_threadpool(briefing_service.mark_pending, scan_id)
+    background_tasks.add_task(run_in_threadpool, briefing_service.generate_briefing, scan_id)
+    return {"status": "generating"}
+
+
 @router.post("/scans/{scan_id}/explain")
 async def explain_scan(
     scan_id: int,

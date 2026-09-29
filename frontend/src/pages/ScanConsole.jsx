@@ -244,7 +244,9 @@ export default function ScanConsole() {
               </div>
               <ScanProgress scan={currentScan} />
               {activeTab === 'results' && <ScanResults scan={currentScan} vulnerabilities={vulnerabilities} />}
-              {activeTab === 'explain' && <ScanExplanation scan={currentScan} />}
+              <div hidden={activeTab !== 'explain'}>
+                <ScanExplanation scan={currentScan} />
+              </div>
               {activeTab === 'attack-paths' && <AttackPathGraph paths={attackPaths} />}
             </div>
           ) : (

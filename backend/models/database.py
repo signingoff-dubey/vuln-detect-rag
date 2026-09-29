@@ -53,6 +53,18 @@ class ScanDB(Base):
     error_message = Column(Text, nullable=True)
 
 
+class ScanBriefingDB(Base):
+    __tablename__ = "scan_briefings"
+
+    scan_id = Column(
+        Integer, ForeignKey("scans.id", ondelete="CASCADE"), primary_key=True
+    )
+    status = Column(String(20), default="pending", index=True)
+    payload = Column(JSON, nullable=True)
+    error = Column(Text, nullable=True)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow)
+
+
 class VulnerabilityDB(Base):
     __tablename__ = "vulnerabilities"
 

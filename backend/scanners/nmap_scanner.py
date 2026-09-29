@@ -92,6 +92,14 @@ class NmapScanner(ScannerAdapter):
                 "-T4",
                 "--top-ports",
                 "1000",
+                "--version-intensity",
+                "2",
+                "--max-retries",
+                "2",
+                "--script-timeout",
+                "30s",
+                "--host-timeout",
+                "240s",
                 target,
             ]
             logger.info("Running nmap: %s", " ".join(cmd))
@@ -99,7 +107,7 @@ class NmapScanner(ScannerAdapter):
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=600,
+                timeout=300,
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
             if result.returncode != 0:

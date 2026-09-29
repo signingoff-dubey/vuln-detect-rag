@@ -46,6 +46,8 @@ export const listScans = () => api.get('/scans')
 export const deleteScan = (id) => api.delete(`/scans/${id}`)
 export const exportScan = (id, format) => api.get(`/scans/${id}/export?format=${format}`, { responseType: 'blob' })
 // Final step of the scan flow: the AI explains the report in plain language.
+export const getBriefing = (id) => api.get(`/scans/${id}/briefing`)
+export const regenerateBriefing = (id) => api.post(`/scans/${id}/briefing/regenerate`)
 export const explainScan = (id, question) => api.post(`/scans/${id}/explain`, null, { params: question ? { question } : {} })
 export const getStats = () => api.get('/stats')
 export const getBackendLogs = () => api.get('/logs')

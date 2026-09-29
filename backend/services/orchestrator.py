@@ -47,11 +47,14 @@ def _run_scanner_sync(scanner, target: str) -> list[ScanVulnerability]:
         return []
 
 
+SCANNER_WALL_CLOCK_SECONDS = 420
+
+
 class OrchestratorService:
     """Manages scan lifecycle and coordinates multiple scanners."""
 
     def __init__(self):
-        self.executor = ThreadPoolExecutor(max_workers=4)
+        self.executor = ThreadPoolExecutor(max_workers=8)
 
     async def run_scan(self, scan_id: int, target: str, scanners: list[str]):
         """Execute a scan across selected scanners."""
@@ -69,32 +72,41 @@ class OrchestratorService:
 
         try:
             all_vulns: list[ScanVulnerability] = []
-            total_scanners = len(scanners)
+            selected = [n for n in scanners if n in SCANNER_MAP]
+            for unknown in set(scanners) - set(selected):
+                logger.warning("Unknown scanner: %s, skipping", unknown)
 
-            for idx, scanner_name in enumerate(scanners):
-                scanner_cls = SCANNER_MAP.get(scanner_name)
-                if not scanner_cls:
-                    logger.warning("Unknown scanner: %s, skipping", scanner_name)
-                    continue
+            running: list[str] = list(selected)
+            finished = 0
+            self._update_scan(scan_id, current_scanner=", ".join(running), progress=0)
 
-                self._update_scan(
-                    scan_id,
-                    current_scanner=scanner_name,
-                    progress=int((idx / total_scanners) * 80),
-                )
-
-                scanner = scanner_cls()
-
-                # Run scanner in thread executor - scanner.scan is synchronous
+            async def run_one(name: str) -> None:
+                nonlocal finished
+                scanner = SCANNER_MAP[name]()
+                loop = asyncio.get_running_loop()
                 try:
-                    loop = asyncio.get_event_loop()
-                    results = await loop.run_in_executor(
-                        self.executor, _run_scanner_sync, scanner, target
+                    results = await asyncio.wait_for(
+                        loop.run_in_executor(self.executor, _run_scanner_sync, scanner, target),
+                        timeout=SCANNER_WALL_CLOCK_SECONDS,
                     )
                     if isinstance(results, list):
                         all_vulns.extend(results)
+                except asyncio.TimeoutError:
+                    logger.warning("Scanner %s exceeded %ss and was abandoned", name, SCANNER_WALL_CLOCK_SECONDS)
+                    all_vulns.extend(scanner._no_result(target))
                 except Exception as e:
-                    logger.warning(f"Scanner {scanner_name} failed: {e}")
+                    logger.warning("Scanner %s failed: %s", name, e)
+                finally:
+                    finished += 1
+                    if name in running:
+                        running.remove(name)
+                    self._update_scan(
+                        scan_id,
+                        current_scanner=", ".join(running),
+                        progress=int(finished / max(len(selected), 1) * 80),
+                    )
+
+            await asyncio.gather(*(run_one(n) for n in selected))
 
             self._update_scan(scan_id, progress=80, current_scanner="aggregating")
 
@@ -131,6 +143,7 @@ class OrchestratorService:
                 avg_cvss=avg_cvss,
                 completed_at=datetime.now(timezone.utc),
             )
+            self._start_briefing(scan_id)
 
         except Exception:
             logger.exception("Scan %d failed", scan_id)
@@ -168,6 +181,28 @@ class OrchestratorService:
                 "still saved but the RAG assistant will not see them",
                 scan_id,
             )
+
+    def _start_briefing(self, scan_id: int) -> None:
+        from services import briefing_service
+
+        try:
+            briefing_service.mark_pending(scan_id)
+            self.executor.submit(briefing_service.generate_briefing, scan_id)
+        except Exception:
+            logger.exception("Could not schedule the briefing for scan %d", scan_id)
+
+    def fail_interrupted_scans(self) -> int:
+        db = SessionLocal()
+        try:
+            stale = db.query(ScanDB).filter(ScanDB.status.in_(("pending", "running"))).all()
+            for scan in stale:
+                scan.status = "failed"
+                scan.current_scanner = ""
+                scan.error_message = "Interrupted by a backend restart."
+            db.commit()
+            return len(stale)
+        finally:
+            db.close()
 
     def create_scan(self, target: str, scanners: list[str]) -> ScanDB:
         db = SessionLocal()

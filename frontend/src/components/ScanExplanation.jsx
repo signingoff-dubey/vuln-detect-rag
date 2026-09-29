@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { FileText, AlertTriangle, RefreshCw, Cpu, Clock } from 'lucide-react'
-import { explainScan } from '../api/client'
+import { explainScan, getBriefing, regenerateBriefing } from '../api/client'
 import { Button, Callout, Card, CardHeader, EmptyState, Input } from './ui'
 import { SkeletonText } from './Skeleton'
 
@@ -10,24 +10,82 @@ import { SkeletonText } from './Skeleton'
  */
 export default function ScanExplanation({ scan }) {
   const [explanation, setExplanation] = useState(null)
-  const [loading, setLoading] = useState(false)
+  const [generating, setGenerating] = useState(false)
+  const [asking, setAsking] = useState(false)
   const [error, setError] = useState('')
   const [question, setQuestion] = useState('')
+  const [refreshKey, setRefreshKey] = useState(0)
+  const scanId = scan.id
+  const completed = scan.status === 'completed'
 
-  const generate = async (e) => {
-    e?.preventDefault()
-    setLoading(true)
+  useEffect(() => {
+    setExplanation(null)
+    setError('')
+    setGenerating(false)
+    setQuestion('')
+  }, [scanId])
+
+  useEffect(() => {
+    if (!completed) return undefined
+    let alive = true
+    let timer = null
+
+    const load = async () => {
+      try {
+        const { data } = await getBriefing(scanId)
+        if (!alive) return
+        if (data.status === 'ready') {
+          setExplanation(data)
+          setError('')
+          setGenerating(false)
+        } else if (data.status === 'failed') {
+          setError(data.error || 'Failed to generate a briefing.')
+          setGenerating(false)
+        } else {
+          setGenerating(true)
+          timer = setTimeout(load, 3000)
+        }
+      } catch (err) {
+        if (!alive) return
+        setError(err.message || 'Failed to load the briefing.')
+        setGenerating(false)
+      }
+    }
+    load()
+    return () => { alive = false; if (timer) clearTimeout(timer) }
+  }, [scanId, completed, refreshKey])
+
+  const regenerate = async () => {
+    setError('')
+    setExplanation(null)
+    setGenerating(true)
+    try {
+      await regenerateBriefing(scanId)
+      setRefreshKey((k) => k + 1)
+    } catch (err) {
+      setError(err.message || 'Failed to start a new briefing.')
+      setGenerating(false)
+    }
+  }
+
+  const ask = async (e) => {
+    e.preventDefault()
+    const q = question.trim()
+    if (!q) return
+    setAsking(true)
     setError('')
     try {
-      const { data } = await explainScan(scan.id, question.trim() || undefined)
+      const { data } = await explainScan(scanId, q)
       setExplanation(data)
       if (data.error) setError(data.error)
     } catch (err) {
-      setError(err.message || 'Failed to generate a briefing.')
+      setError(err.message || 'Failed to answer the question.')
     } finally {
-      setLoading(false)
+      setAsking(false)
     }
   }
+
+  const loading = generating || asking
 
   if (scan.status !== 'completed') {
     return (
@@ -44,17 +102,20 @@ export default function ScanExplanation({ scan }) {
           title="Briefing"
           description={`What the ${scan.total_vulnerabilities} findings on ${scan.target} mean, and what to fix first.`}
         />
-        <form onSubmit={generate} className="px-5 pb-5 flex flex-col sm:flex-row gap-2">
+        <form onSubmit={ask} className="px-5 pb-5 flex flex-col sm:flex-row gap-2">
           <Input
             aria-label="Optional question about this scan"
             className="flex-1 min-w-0"
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
-            placeholder="Optional: ask something specific about this scan"
+            placeholder="Ask something specific about this scan"
             disabled={loading}
           />
-          <Button type="submit" variant="primary" loading={loading} icon={explanation ? RefreshCw : FileText}>
-            {loading ? 'Writing…' : explanation ? 'Regenerate' : 'Write briefing'}
+          <Button type="submit" variant="primary" loading={asking} icon={FileText} disabled={!question.trim() || generating}>
+            {asking ? 'Answering…' : 'Ask'}
+          </Button>
+          <Button type="button" onClick={regenerate} loading={generating} icon={RefreshCw} disabled={asking}>
+            {generating ? 'Writing…' : 'Regenerate'}
           </Button>
         </form>
       </Card>

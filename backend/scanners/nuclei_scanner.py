@@ -83,13 +83,17 @@ class NucleiScanner(ScannerAdapter):
                 "1",
                 "-c",
                 "50",
+                "-rate-limit",
+                "150",
+                "-max-host-error",
+                "30",
             ]
             logger.info("Running nuclei: %s", " ".join(cmd))
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
-                timeout=600,
+                timeout=300,
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
             # Nuclei returns 0 even when it finds vulns, non-zero on error
