@@ -30,7 +30,7 @@ class NiktoScanner(CLIScannerAdapter):
     free = True
     BINARY_NAMES = ("nikto", "nikto.pl")
     PATH_ENV_VAR = "NIKTO_PATH"
-    TIMEOUT = 900
+    TIMEOUT = 90
     install_hint = (
         "Install with: apt install nikto / brew install nikto, or clone "
         "https://github.com/sullo/nikto"
@@ -78,7 +78,7 @@ class NiktoScanner(CLIScannerAdapter):
             "-nointeractive",
             # Cap runtime: Nikto's full plugin set against a slow host can run
             # for a very long time.
-            "-maxtime", "600s",
+            "-maxtime", "30s",
         ]
 
         result = self.run(cmd)

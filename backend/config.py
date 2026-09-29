@@ -74,13 +74,13 @@ class Settings(BaseSettings):
     # OpenRouter (free-tier models only) — https://openrouter.ai/keys
     # The client refuses any model that is not zero-cost.
     OPENROUTER_API_KEY: str = ""
-    OPENROUTER_MODEL: str = "minimax/minimax-m3:free"
+    OPENROUTER_MODEL: str = "openrouter/free"
     OPENROUTER_SITE_URL: str = "http://localhost:5173"
     OPENROUTER_APP_NAME: str = "VulnDetectRAG"
 
     # NVIDIA NIM (free tier) — https://build.nvidia.com
     NVIDIA_API_KEY: str = ""
-    NVIDIA_MODEL: str = "nvidia/nemotron-3-nano-30b-a3b"
+    NVIDIA_MODEL: str = "nvidia/nemotron-3-super-120b-a12b"
 
     # Ensemble orchestration
     LLM_ENSEMBLE: bool = True

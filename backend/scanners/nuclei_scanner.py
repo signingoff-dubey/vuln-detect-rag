@@ -67,11 +67,7 @@ class NucleiScanner(ScannerAdapter):
             return self._no_result(target)
 
         try:
-            # Ensure target has a scheme for nuclei
-            if not target.startswith(("http://", "https://")):
-                target_url = f"https://{target}"
-            else:
-                target_url = target
+            target_url = target
 
             cmd = [
                 binary,

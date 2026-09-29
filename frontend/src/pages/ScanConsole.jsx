@@ -8,6 +8,7 @@ import ScanForm from '../components/ScanForm'
 import ScanResults from '../components/ScanResults'
 import AttackPathGraph from '../components/AttackPathGraph'
 import ScanExplanation from '../components/ScanExplanation'
+import ScanProgress from '../components/ScanProgress'
 import {
   Button, Callout, Card, CardHeader, IconButton, PageHeader, Segmented, StatusBadge, EmptyState, cx,
 } from '../components/ui'
@@ -241,6 +242,7 @@ export default function ScanConsole() {
                   ]}
                 />
               </div>
+              <ScanProgress scan={currentScan} />
               {activeTab === 'results' && <ScanResults scan={currentScan} vulnerabilities={vulnerabilities} />}
               {activeTab === 'explain' && <ScanExplanation scan={currentScan} />}
               {activeTab === 'attack-paths' && <AttackPathGraph paths={attackPaths} />}

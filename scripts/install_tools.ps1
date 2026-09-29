@@ -83,11 +83,14 @@ function Install-Zap {
     if (-not $jdk) { Say '[!!] zap skipped: needs a Java 17+ JDK (winget install EclipseAdoptium.Temurin.21.JDK)'; return }
     Say '[..] installing zap'
     Install-Tree (Get-Asset 'zaproxy/zaproxy' 'Crossplatform\.zip$') 'zap'
+    $jar = (Get-ChildItem (Join-Path $Tools 'zap') -Filter 'zap-*.jar' | Select-Object -First 1).Name
     $lines = @(
         '@echo off',
-        "set `"JAVA_HOME=$jdk`"",
-        'set "PATH=%JAVA_HOME%\bin;%PATH%"',
-        'call "%~dp0..\zap\zap.bat" %*'
+        'pushd "%~dp0..\zap"',
+        "`"$jdk\bin\java.exe`" -jar $jar %*",
+        'set "ZAP_EXIT=%ERRORLEVEL%"',
+        'popd',
+        'exit /b %ZAP_EXIT%'
     )
     Set-Content -Encoding ASCII -Path $wrapper -Value $lines
     Say '[ok] zap installed'

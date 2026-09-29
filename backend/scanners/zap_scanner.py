@@ -116,63 +116,59 @@ class ZAPScanner(ScannerAdapter):
         logger.info("OWASP ZAP scan not possible, returning no simulated data for %s", target)
         return self._no_result(target)
 
+    SPIDER_WAIT_SECONDS = 60
+    ACTIVE_WAIT_SECONDS = 120
+
+    @staticmethod
+    def _resolve_url(target: str) -> str:
+        """Pick the scheme the host actually answers on, preferring HTTPS."""
+        import httpx
+
+        if target.startswith(("http://", "https://")):
+            return target
+        for scheme in ("https", "http"):
+            try:
+                httpx.get(f"{scheme}://{target}", timeout=8, follow_redirects=False, verify=True)
+                return f"{scheme}://{target}"
+            except httpx.HTTPError:
+                continue
+        return f"http://{target}"
+
     def _scan_via_api(self, target: str) -> list[ScanVulnerability]:
-        """Scan using ZAP REST API."""
+        """Scan using ZAP REST API, with bounded spider and active-scan phases."""
         import httpx
 
         base_url = f"http://{self.API_HOST}:{self.API_PORT}"
-        api_key_param = f"apikey={self.API_KEY}" if self.API_KEY else ""
+        key = {"apikey": self.API_KEY} if self.API_KEY else {}
+        target_url = self._resolve_url(target)
 
-        target_url = target if target.startswith("http") else f"https://{target}"
+        def call(path: str, **params):
+            response = httpx.get(f"{base_url}{path}", params={**params, **key}, timeout=30)
+            response.raise_for_status()
+            return response.json()
 
-        # Step 1: Spider the target
-        spider_url = (
-            f"{base_url}/JSON/spider/action/scan/?url={target_url}&{api_key_param}"
-        )
-        response = httpx.get(spider_url, timeout=30)
+        def wait(status_path: str, scan_id: str, budget: int, step: int) -> None:
+            deadline = time.time() + budget
+            while time.time() < deadline:
+                time.sleep(step)
+                if str(call(status_path, scanId=scan_id).get("status")) == "100":
+                    return
 
-        if response.status_code != 200:
-            raise Exception(f"Failed to start ZAP spider: {response.status_code}")
+        spider_id = call("/JSON/spider/action/scan/", url=target_url).get("scan", "0")
+        wait("/JSON/spider/view/status/", spider_id, self.SPIDER_WAIT_SECONDS, 3)
+        call("/JSON/spider/action/stop/", scanId=spider_id)
 
-        scan_id = response.json().get("scan", "0")
+        active_id = call("/JSON/ascan/action/scan/", url=target_url).get("scan", "0")
+        wait("/JSON/ascan/view/status/", active_id, self.ACTIVE_WAIT_SECONDS, 5)
+        call("/JSON/ascan/action/stop/", scanId=active_id)
 
-        # Wait for spider to complete
-        for _ in range(60):
-            time.sleep(5)
-            status_url = (
-                f"{base_url}/JSON/spider/view/status/?scanId={scan_id}&{api_key_param}"
-            )
-            status_response = httpx.get(status_url, timeout=30)
-            if status_response.json().get("status") == "100":
-                break
-
-        # Step 2: Active scan
-        active_url = (
-            f"{base_url}/JSON/ascan/action/scan/?url={target_url}&{api_key_param}"
-        )
-        response = httpx.get(active_url, timeout=30)
-
-        if response.status_code == 200:
-            active_scan_id = response.json().get("scan", "0")
-
-            # Wait for active scan to complete
-            for _ in range(120):
-                time.sleep(10)
-                status_url = f"{base_url}/JSON/ascan/view/status/?scanId={active_scan_id}&{api_key_param}"
-                status_response = httpx.get(status_url, timeout=30)
-                if status_response.json().get("status") == "100":
-                    break
-
-        # Step 3: Get alerts
-        alerts_url = (
-            f"{base_url}/JSON/core/view/alerts/?baseurl={target_url}&{api_key_param}"
-        )
-        alerts_response = httpx.get(alerts_url, timeout=30)
-
-        if alerts_response.status_code == 200:
-            return self._parse_api_results(alerts_response.json(), target)
-
-        raise Exception("Failed to get ZAP alerts")
+        data = call("/JSON/core/view/alerts/")
+        prefix = target_url.rstrip("/")
+        data["alerts"] = [
+            a for a in data.get("alerts", [])
+            if str(a.get("url") or a.get("nodeName") or "").startswith(prefix)
+        ]
+        return self._parse_api_results(data, target)
 
     def _parse_api_results(self, data: dict, target: str) -> list[ScanVulnerability]:
         """Parse ZAP API results into ScanVulnerability objects."""
@@ -181,7 +177,7 @@ class ZAPScanner(ScannerAdapter):
 
         seen = set()
         for alert in alerts:
-            alert_name = alert.get("name", "")
+            alert_name = alert.get("name") or alert.get("alert", "")
             if alert_name in seen:
                 continue
             seen.add(alert_name)
@@ -216,7 +212,7 @@ class ZAPScanner(ScannerAdapter):
             if ref:
                 references = [r.strip() for r in ref.split("\n") if r.strip()]
 
-            for instance in alert.get("instances", []):
+            for instance in (alert.get("instances") or [alert])[:1]:
                 vulns.append(
                     ScanVulnerability(
                         cve_id=cve_id,
