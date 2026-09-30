@@ -84,6 +84,14 @@ export const setRagConfig = (enabled) => api.post('/rag-config', null, { params:
 export default api
 
 
+// Sanitization: static inspection only, nothing is opened or executed
+export const sanitizeLink = (url, trace) => api.post('/sanitize/link', { url, trace })
+export const sanitizeFile = (file) =>
+  api.post('/sanitize/file', file, {
+    params: { filename: file.name },
+    headers: { 'Content-Type': 'application/octet-stream' },
+  })
+
 // Knowledge graph (CVE -> CWE -> CAPEC -> ATT&CK)
 export const getGraphStats = () => api.get('/graph/stats')
 export const getGraphChain = (cveId) => api.get(`/graph/chain/${cveId}`)

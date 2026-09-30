@@ -497,6 +497,8 @@ ablated for measurement rather than only configured.
 | POST | `/api/rag-config?enabled=` | **Turn retrieval on or off** |
 | GET | `/api/eval-metrics` | **Latest evaluation results** |
 | GET | `/api/logs` | Backend logs |
+| POST | `/api/sanitize/file?filename=` | Static inspection of an untrusted file (raw body, 25 MB cap) |
+| POST | `/api/sanitize/link` | Static inspection of a link (`{url, trace}`); `trace` follows redirects with SSRF checks |
 
 Full API docs at `http://localhost:8000/docs` when running.
 

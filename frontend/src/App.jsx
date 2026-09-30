@@ -11,6 +11,7 @@ const RAGAssistant = lazy(() => import('./pages/RAGAssistant'))
 const CVEDetail = lazy(() => import('./pages/CVEDetail'))
 const CVEBrowse = lazy(() => import('./pages/CVEBrowse'))
 const KnowledgeGraph = lazy(() => import('./pages/KnowledgeGraph'))
+const Sanitize = lazy(() => import('./pages/Sanitize'))
 const Settings = lazy(() => import('./pages/Settings'))
 
 // Route-level fallback while a page chunk downloads: a header and two blocks
@@ -62,6 +63,7 @@ export default function App() {
           <Route path="cve" element={<Suspense fallback={<Loading />}><CVEBrowse /></Suspense>} />
           <Route path="cve/:cveId" element={<Suspense fallback={<Loading />}><CVEDetail /></Suspense>} />
           <Route path="graph" element={<Suspense fallback={<Loading />}><KnowledgeGraph /></Suspense>} />
+          <Route path="sanitize" element={<Suspense fallback={<Loading />}><Sanitize /></Suspense>} />
           <Route path="settings" element={<Suspense fallback={<Loading />}><Settings /></Suspense>} />
           <Route path="*" element={<NotFound />} />
         </Route>
