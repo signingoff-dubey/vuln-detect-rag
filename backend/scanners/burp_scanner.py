@@ -107,6 +107,12 @@ class BurpScanner(ScannerAdapter):
             logger.warning("Burp Suite not available, returning no simulated data for %s", target)
             return self._no_result(target)
 
+        from scanners.cli_base import CLIScannerAdapter
+
+        if not CLIScannerAdapter.validate_target(target, allow_url=True):
+            logger.error("Burp: rejected unsafe target %r", target)
+            return self._no_result(target)
+
         # Try REST API first (if Burp is already running)
         try:
             vulns = self._scan_via_api(target)

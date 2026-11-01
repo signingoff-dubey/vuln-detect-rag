@@ -66,6 +66,12 @@ class NucleiScanner(ScannerAdapter):
             logger.warning("Nuclei not available, returning no simulated data for %s", target)
             return self._no_result(target)
 
+        from scanners.cli_base import CLIScannerAdapter
+
+        if not CLIScannerAdapter.validate_target(target, allow_url=True):
+            logger.error("Nuclei: rejected unsafe target %r", target)
+            return self._no_result(target)
+
         try:
             target_url = target
 

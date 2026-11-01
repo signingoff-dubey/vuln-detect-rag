@@ -105,6 +105,12 @@ class ZAPScanner(ScannerAdapter):
             logger.warning("OWASP ZAP not available, returning no simulated data for %s", target)
             return self._no_result(target)
 
+        from scanners.cli_base import CLIScannerAdapter
+
+        if not CLIScannerAdapter.validate_target(target, allow_url=True):
+            logger.error("ZAP: rejected unsafe target %r", target)
+            return self._no_result(target)
+
         # Try REST API first (if ZAP is already running)
         try:
             vulns = self._scan_via_api(target)
