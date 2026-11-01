@@ -79,3 +79,34 @@ def validate_target(target: str, resolve: bool = True) -> str:
             if is_forbidden_ip(address):
                 raise _reject("Target resolves to an internal or reserved IP address")
     return host
+
+
+def resolve_target(target: str) -> tuple:
+    """Validate a target and pin it to one resolved, approved IP literal.
+
+    Returns ``(host, ip)``: ``host`` is what ``validate_target`` would return
+    (an IP string, or the normalized hostname); ``ip`` is a single address
+    from that resolution, already checked against the forbidden-IP rules.
+
+    This exists because handing a validated *hostname* back to a scanner lets
+    the scanner re-resolve it on its own, independently, whenever it actually
+    runs. A target with a short-TTL DNS record can pass validation pointing at
+    a public IP and then be repointed at an internal address (e.g. the cloud
+    metadata IP) before the scanner's own lookup happens minutes later -
+    classic DNS-rebinding TOCTOU. Callers that are about to hand a target to a
+    scanner should call this immediately beforehand and use the returned
+    ``ip``, not the hostname, wherever the scanned tool accepts a bare
+    address.
+    """
+    host = validate_target(target, resolve=False)
+    try:
+        ip = ipaddress.ip_address(host)
+        return host, str(ip)
+    except ValueError:
+        pass
+
+    addresses = _resolve(host)
+    for address in addresses:
+        if is_forbidden_ip(address):
+            raise _reject("Target resolves to an internal or reserved IP address")
+    return host, str(addresses[0])

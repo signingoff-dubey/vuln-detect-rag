@@ -65,10 +65,16 @@ class NmapScanner(ScannerAdapter):
 
     @staticmethod
     def _validate_target(target: str) -> bool:
-        """Validate target contains only safe characters before subprocess use."""
-        import re
+        """Validate target contains only safe characters before subprocess use.
 
-        return bool(re.match(r"^[a-zA-Z0-9._-]+$", target))
+        Delegates to the shared regex in cli_base instead of keeping a second
+        copy: this check is the last line of defense against argv injection,
+        and a second copy is a second thing to forget to update if that
+        pattern ever changes.
+        """
+        from scanners.cli_base import CLIScannerAdapter
+
+        return CLIScannerAdapter.validate_target(target)
 
     def scan(self, target: str) -> list[ScanVulnerability]:
         binary = self._get_binary()

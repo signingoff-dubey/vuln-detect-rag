@@ -63,7 +63,11 @@ class OrchestratorService:
         try:
             from services.target_validation import validate_target
 
-            await asyncio.to_thread(validate_target, target)
+            # Cheap, format-only recheck (no DNS) so garbage input fails fast
+            # before any scanner is even scheduled. The resolve+forbidden-IP
+            # check that matters happens per-scanner in run_one, right before
+            # that scanner runs - see the comment there for why.
+            await asyncio.to_thread(validate_target, target, False)
         except Exception as e:
             detail = getattr(e, "detail", str(e))
             logger.warning("Scan %s rejected at execution time: %s", scan_id, detail)
@@ -85,8 +89,23 @@ class OrchestratorService:
                 scanner = SCANNER_MAP[name]()
                 loop = asyncio.get_running_loop()
                 try:
+                    # Re-resolve and re-check right before this scanner
+                    # actually runs, instead of trusting the resolution done
+                    # once when the scan was submitted. Scans run several
+                    # tools over several minutes, and a hostname validated at
+                    # submission can be repointed at an internal address by
+                    # its own DNS before a later scanner's turn comes up. For
+                    # nmap - the one tool here with no need for a hostname
+                    # (no Host header or SNI involved) - the pinned IP is
+                    # used directly so there is no second resolution step
+                    # left for an attacker to win a race against at all.
+                    from services.target_validation import resolve_target
+
+                    host, ip = await asyncio.to_thread(resolve_target, target)
+                    scan_target = ip if name == "nmap" else host
+
                     results = await asyncio.wait_for(
-                        loop.run_in_executor(self.executor, _run_scanner_sync, scanner, target),
+                        loop.run_in_executor(self.executor, _run_scanner_sync, scanner, scan_target),
                         timeout=SCANNER_WALL_CLOCK_SECONDS,
                     )
                     if isinstance(results, list):

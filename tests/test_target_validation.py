@@ -77,3 +77,32 @@ def test_unresolvable_hostname_is_rejected(monkeypatch):
 def test_public_hostname_passes(monkeypatch):
     monkeypatch.setattr(socket, "getaddrinfo", _fake_dns({"ok.example.com": ["93.184.216.34"]}))
     assert tv.validate_target("ok.example.com") == "ok.example.com"
+
+
+def test_resolve_target_pins_ip_literal(monkeypatch):
+    monkeypatch.setattr(socket, "getaddrinfo", _fake_dns({"ok.example.com": ["93.184.216.34"]}))
+    host, ip = tv.resolve_target("ok.example.com")
+    assert host == "ok.example.com"
+    assert ip == "93.184.216.34"
+
+
+def test_resolve_target_rejects_ip_already_passed_through():
+    host, ip = tv.resolve_target("8.8.8.8")
+    assert (host, ip) == ("8.8.8.8", "8.8.8.8")
+
+
+def test_resolve_target_catches_dns_rebinding(monkeypatch):
+    """A hostname that resolves to a private IP by the time a scanner is
+    about to run must be rejected, even though an earlier check (at
+    submission time, with a different DNS answer) passed. This is the
+    rebinding window resolve_target exists to close: every caller that is
+    about to hand a target to a scanner must call it immediately beforehand
+    rather than reusing a hostname validated earlier.
+    """
+    monkeypatch.setattr(socket, "getaddrinfo", _fake_dns({"rebind.example.com": ["93.184.216.34"]}))
+    assert tv.validate_target("rebind.example.com") == "rebind.example.com"
+
+    # DNS answer changes between the initial check and the scanner's turn.
+    monkeypatch.setattr(socket, "getaddrinfo", _fake_dns({"rebind.example.com": ["169.254.169.254"]}))
+    with pytest.raises(HTTPException):
+        tv.resolve_target("rebind.example.com")
