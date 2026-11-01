@@ -86,3 +86,8 @@ backend/data/prefix_backup/
 
 # Locally installed scanner binaries (see scripts/install_tools.ps1).
 tools/
+
+# Fingerprint of the last successfully (re-)indexed CVE corpus (see
+# scripts/seed_cve_data.py); lets a launch with nothing new to seed skip
+# straight past re-enrichment and re-embedding.
+backend/data/.seed_stamp

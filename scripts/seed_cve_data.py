@@ -2,12 +2,28 @@
 import sys
 import os
 import json
+import hashlib
 
 # Add backend to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'backend')))
 
 from models.database import init_db, CVEEntryDB, SessionLocal
 from services.rag_engine import rag_engine
+
+#: Marks the corpus content that was last fully (re-)indexed, so a launch
+#: with nothing new to seed can skip straight past enrichment (CISA KEV/EPSS/
+#: NVD network lookups for every CVE) and re-embedding the whole corpus - by
+#: far the slowest part of this script, and otherwise paid again on every
+#: single app launch even though seeding is only here to make sure it ran
+#: *at least* once.
+STAMP_PATH = os.path.join(
+    os.path.dirname(__file__), '..', 'backend', 'data', '.seed_stamp'
+)
+
+
+def _corpus_fingerprint(cve_entries: list[dict]) -> str:
+    blob = json.dumps(cve_entries, sort_keys=True, default=str).encode('utf-8')
+    return hashlib.sha256(blob).hexdigest()
 
 
 def seed_data():
@@ -30,6 +46,25 @@ def seed_data():
     for entry in cve_entries:
         seen[entry['cve_id']] = entry
     cve_entries = list(seen.values())
+
+    fingerprint = _corpus_fingerprint(cve_entries)
+    previous_fingerprint = None
+    if os.path.exists(STAMP_PATH):
+        try:
+            with open(STAMP_PATH, 'r', encoding='utf-8') as f:
+                previous_fingerprint = f.read().strip()
+        except OSError:
+            previous_fingerprint = None
+
+    # Skip only when the corpus content is unchanged AND the vector store
+    # actually has documents in it - a stamp from a run whose indexing step
+    # failed, or a store that was wiped since, must not be trusted.
+    if fingerprint == previous_fingerprint and rag_engine.vector_store.count() > 0:
+        print(
+            f"CVE corpus unchanged ({len(cve_entries)} entries) and already "
+            "indexed; skipping re-enrichment and re-embedding."
+        )
+        return 0
 
     # Insert into SQLite
     db = SessionLocal()
@@ -79,6 +114,13 @@ def seed_data():
             file=sys.stderr,
         )
         raise SystemExit(1)
+
+    try:
+        with open(STAMP_PATH, 'w', encoding='utf-8') as f:
+            f.write(fingerprint)
+    except OSError:
+        pass  # Worst case, the next launch re-seeds unnecessarily.
+
     return inserted
 
 

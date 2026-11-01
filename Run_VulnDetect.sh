@@ -100,12 +100,24 @@ if ! "$VENV_PY" -c "import sys" >/dev/null 2>&1; then
     python3 -m venv backend/venv || { echo "[ERROR] venv creation failed."; exit 1; }
 fi
 
-echo "[*] Installing Python dependencies..."
-# requirements.txt lives at the repository root, not in backend/.
-"$VENV_PY" -m pip install -r requirements.txt -q || {
-    echo "[ERROR] Dependency installation failed."
-    exit 1
-}
+# Even with nothing to do, "pip install -q" still re-resolves every pinned
+# version on every launch, which is seconds wasted on every single start.
+# Skipped once a hash of requirements.txt matches what was last installed
+# into this venv; living inside backend/venv ties the stamp's lifetime to
+# the venv's, so a rebuilt venv (above) always reinstalls.
+REQ_STAMP="backend/venv/.requirements.sha256"
+REQ_HASH="$(sha256sum requirements.txt 2>/dev/null | cut -d' ' -f1)"
+if [ -n "$REQ_HASH" ] && [ "$(cat "$REQ_STAMP" 2>/dev/null)" = "$REQ_HASH" ]; then
+    echo "[*] Python dependencies already up to date, skipping install."
+else
+    echo "[*] Installing Python dependencies..."
+    # requirements.txt lives at the repository root, not in backend/.
+    "$VENV_PY" -m pip install -r requirements.txt -q || {
+        echo "[ERROR] Dependency installation failed."
+        exit 1
+    }
+    [ -n "$REQ_HASH" ] && echo "$REQ_HASH" > "$REQ_STAMP"
+fi
 
 # ---------------------------------------------------------------
 # 5. Seed the knowledge base BEFORE the backend starts
@@ -151,7 +163,21 @@ PIDS+=($!)
 # ---------------------------------------------------------------
 # 7. Open the UI
 # ---------------------------------------------------------------
-sleep 10
+# Poll instead of a flat 10s sleep: the backend is usually ready in 1-3s
+# once dependencies are already installed, and the browser should open the
+# moment it actually can, not after a fixed wait sized for the slowest case.
+# Still capped, so a genuinely slow machine does not hang here.
+echo "[*] Waiting for the backend to become ready..."
+if command -v curl >/dev/null 2>&1; then
+    for _ in $(seq 1 30); do
+        if curl -fsS "http://${BACKEND_HOST}:${BACKEND_PORT}/api/health" >/dev/null 2>&1; then
+            break
+        fi
+        sleep 1
+    done
+else
+    sleep 10
+fi
 URL="http://localhost:${FRONTEND_PORT}"
 if command -v xdg-open >/dev/null 2>&1; then
     xdg-open "$URL" >/dev/null 2>&1 &

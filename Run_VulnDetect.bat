@@ -131,13 +131,32 @@ if not defined VENV_OK (
     )
 )
 
-echo [*] Installing Python dependencies...
-:: requirements.txt lives at the repository root, not in backend\.
-"%VENV_PY%" -m pip install -r requirements.txt -q
-if !ERRORLEVEL! neq 0 (
-    echo [ERROR] Dependency installation failed. See the messages above.
-    pause
-    exit /b 1
+:: Even with nothing to do, "pip install -q" still re-resolves every pinned
+:: version on every launch, which is seconds wasted on every single start.
+:: Skipped once a hash of requirements.txt matches what was last installed
+:: into this venv; living inside backend\venv ties the stamp's lifetime to
+:: the venv's, so a rebuilt venv (above) always reinstalls.
+set "REQ_STAMP=backend\venv\.requirements.sha256"
+set "REQ_HASH="
+for /f "usebackq delims=" %%H in (`powershell -NoProfile -Command "(Get-FileHash requirements.txt -Algorithm SHA256).Hash" 2^>nul`) do set "REQ_HASH=%%H"
+set "REQ_MATCH="
+if defined REQ_HASH if exist "%REQ_STAMP%" (
+    set /p REQ_PREV=<"%REQ_STAMP%"
+    if "!REQ_PREV!"=="!REQ_HASH!" set "REQ_MATCH=1"
+)
+
+if defined REQ_MATCH (
+    echo [*] Python dependencies already up to date, skipping install.
+) else (
+    echo [*] Installing Python dependencies...
+    :: requirements.txt lives at the repository root, not in backend\.
+    "%VENV_PY%" -m pip install -r requirements.txt -q
+    if !ERRORLEVEL! neq 0 (
+        echo [ERROR] Dependency installation failed. See the messages above.
+        pause
+        exit /b 1
+    )
+    if defined REQ_HASH (>"%REQ_STAMP%" echo !REQ_HASH!)
 )
 
 :: ---------------------------------------------------------------
@@ -186,8 +205,14 @@ start "VulnDetectRAG Frontend (Do not close)" cmd /k "cd /d "%~dp0frontend" && n
 :: 7. Open the UI
 :: ---------------------------------------------------------------
 echo.
-echo [*] Waiting for services to initialise...
-timeout /t 10 /nobreak >nul
+echo [*] Waiting for the backend to become ready...
+:: Poll instead of a flat 10s wait: the backend is usually ready in 1-3s once
+:: dependencies are already installed, so most launches no longer pay a full
+:: 10 second tax here. One PowerShell process does all 30 polls internally
+:: rather than being relaunched per attempt, which would cost far more than
+:: it saves. Still capped, so a genuinely slow machine does not hang here.
+powershell -NoProfile -Command ^
+    "$u = 'http://%BACKEND_HOST%:%BACKEND_PORT%/api/health'; for ($i = 0; $i -lt 30; $i++) { try { Invoke-WebRequest -UseBasicParsing -Uri $u -TimeoutSec 2 | Out-Null; exit 0 } catch { Start-Sleep -Seconds 1 } }; exit 1"
 start http://localhost:%FRONTEND_PORT%
 
 echo.
