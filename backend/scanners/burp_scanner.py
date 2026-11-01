@@ -209,11 +209,13 @@ class BurpScanner(ScannerAdapter):
         """Scan using Burp Suite CLI (Professional edition)."""
         binary = self._get_binary()
 
+        fd, project_path = tempfile.mkstemp(prefix="burp_scan_", suffix=".burp")
+        os.close(fd)
         cmd = [
             binary,
             "--unpause",
             "--project-file",
-            os.path.join(tempfile.gettempdir(), "burp_scan.burp"),
+            project_path,
         ]
 
         # Burp CLI is limited, return empty to fall back to mock

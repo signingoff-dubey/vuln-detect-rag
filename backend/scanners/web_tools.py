@@ -67,7 +67,12 @@ class NiktoScanner(CLIScannerAdapter):
             logger.error("Nikto: rejected unsafe target %r", target)
             return []
 
-        report_path = os.path.join(tempfile.gettempdir(), f"nikto_{os.getpid()}.json")
+        # mkstemp(), not a PID-keyed name: os.getpid() is the backend process's
+        # PID, shared by every thread, and the orchestrator runs several scans
+        # concurrently - a fixed-per-process name let two nikto scans read or
+        # overwrite each other's report.
+        fd, report_path = tempfile.mkstemp(prefix="nikto_", suffix=".json")
+        os.close(fd)
         host = target.replace("https://", "").replace("http://", "").split("/")[0]
 
         cmd = [
@@ -181,7 +186,10 @@ class TLSScanner(CLIScannerAdapter):
 
     def _scan_sslyze(self, binary: str, target: str) -> list[ScanVulnerability]:
         """Run sslyze and interpret its JSON."""
-        report_path = os.path.join(tempfile.gettempdir(), f"sslyze_{os.getpid()}.json")
+        # See the comment on the Nikto report path above: PID-keyed names
+        # collide across concurrent scans, mkstemp()'s don't.
+        fd, report_path = tempfile.mkstemp(prefix="sslyze_", suffix=".json")
+        os.close(fd)
         result = self.run([binary, "--json_out", report_path, f"{target}:443"])
         if result is None:
             return []
@@ -256,7 +264,8 @@ class TLSScanner(CLIScannerAdapter):
 
     def _scan_testssl(self, binary: str, target: str) -> list[ScanVulnerability]:
         """Run testssl.sh and interpret its JSON findings."""
-        report_path = os.path.join(tempfile.gettempdir(), f"testssl_{os.getpid()}.json")
+        fd, report_path = tempfile.mkstemp(prefix="testssl_", suffix=".json")
+        os.close(fd)
         result = self.run([
             binary, "--jsonfile", report_path, "--quiet",
             "--severity", "LOW", target,

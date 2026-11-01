@@ -4,6 +4,7 @@ import os
 import hashlib
 import logging
 import tempfile
+import threading
 from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass
 from datetime import datetime
@@ -395,6 +396,12 @@ class FAISSVectorStore(BaseVectorStore):
         self._dimension: Optional[int] = None
         self._documents: Dict[str, Document] = {}
         self._doc_ids: List[str] = []
+        # Guards every read/write of _index, _doc_ids and _documents: the
+        # orchestrator indexes scan results from an 8-worker thread pool, so
+        # two scans finishing close together can otherwise race on this
+        # instance - interleaved appends corrupting _doc_ids, or a search
+        # running mid-rebuild against a half-updated index.
+        self._lock = threading.RLock()
         self._load_index()
 
     def _ensure_index(self, dimension: int):
@@ -431,31 +438,69 @@ class FAISSVectorStore(BaseVectorStore):
         return self.add_documents([document])
 
     def add_documents(self, documents: List[Document]) -> bool:
-        """Add multiple documents."""
+        """Add multiple documents.
+
+        A document whose id already exists is an update, not an insert:
+        IndexFlatIP has no in-place replace, so re-indexing the same id (as
+        the orchestrator does every time a scan completes, since indexing
+        upserts) previously just appended a second vector for it forever,
+        skewing retrieval toward whatever got re-indexed most. When any
+        incoming id collides with one already stored, the whole index is
+        rebuilt from the deduplicated document set instead.
+        """
         try:
             import numpy as np
             import faiss
 
-            added = 0
-            for doc in documents:
-                if not doc.embedding:
-                    continue
-                index = self._ensure_index(len(doc.embedding))
+            with self._lock:
+                embeddable = [doc for doc in documents if doc.embedding]
+                needs_rebuild = any(doc.id in self._documents for doc in embeddable)
 
-                self._documents[doc.id] = doc
-                self._doc_ids.append(doc.id)
+                for doc in embeddable:
+                    self._documents[doc.id] = doc
 
-                embedding = np.array([doc.embedding], dtype=np.float32)
-                faiss.normalize_L2(embedding)
-                index.add(embedding)
-                added += 1
+                if needs_rebuild:
+                    self._rebuild_index()
+                else:
+                    for doc in embeddable:
+                        index = self._ensure_index(len(doc.embedding))
+                        embedding = np.array([doc.embedding], dtype=np.float32)
+                        faiss.normalize_L2(embedding)
+                        index.add(embedding)
+                        self._doc_ids.append(doc.id)
 
-            logger.info(f"Added {added} documents to FAISS")
-            return self._save_index()
+                logger.info(f"Added {len(embeddable)} documents to FAISS")
+                return self._save_index()
 
         except Exception as e:
             logger.error(f"Failed to add documents: {e}")
             return False
+
+    def _rebuild_index(self) -> None:
+        """Rebuild the FAISS index from the current (deduplicated) documents.
+
+        Must be called with ``self._lock`` held.
+        """
+        import numpy as np
+        import faiss
+
+        self._index = None
+        self._dimension = None
+        self._doc_ids = []
+
+        ids, vectors = [], []
+        for doc_id, doc in self._documents.items():
+            if doc.embedding:
+                ids.append(doc_id)
+                vectors.append(doc.embedding)
+        if not vectors:
+            return
+
+        index = self._ensure_index(len(vectors[0]))
+        matrix = np.array(vectors, dtype=np.float32)
+        faiss.normalize_L2(matrix)
+        index.add(matrix)
+        self._doc_ids = ids
     
     def search(self, query_embedding: List[float], top_k: int = 5,
                filter_metadata: Optional[Dict[str, Any]] = None) -> List[SearchResult]:
@@ -464,33 +509,34 @@ class FAISSVectorStore(BaseVectorStore):
             import numpy as np
             import faiss
 
-            if self._index is None or not self._doc_ids:
-                logger.warning("FAISS index is empty — no documents to retrieve.")
-                return []
+            with self._lock:
+                if self._index is None or not self._doc_ids:
+                    logger.warning("FAISS index is empty — no documents to retrieve.")
+                    return []
 
-            query = np.array([query_embedding], dtype=np.float32)
-            faiss.normalize_L2(query)
+                query = np.array([query_embedding], dtype=np.float32)
+                faiss.normalize_L2(query)
 
-            distances, indices = self.index.search(query, min(top_k, len(self._doc_ids)))
-            
-            results = []
-            for i, idx in enumerate(indices[0]):
-                if idx < len(self._doc_ids):
-                    doc_id = self._doc_ids[idx]
-                    doc = self._documents.get(doc_id)
-                    if doc:
-                        if filter_metadata:
-                            if not self._matches_filter(doc.metadata, filter_metadata):
-                                continue
-                        
-                        results.append(SearchResult(
-                            document=doc,
-                            score=float(distances[0][i]),
-                            metadata=doc.metadata
-                        ))
-            
-            return results
-            
+                distances, indices = self.index.search(query, min(top_k, len(self._doc_ids)))
+
+                results = []
+                for i, idx in enumerate(indices[0]):
+                    if idx < len(self._doc_ids):
+                        doc_id = self._doc_ids[idx]
+                        doc = self._documents.get(doc_id)
+                        if doc:
+                            if filter_metadata:
+                                if not self._matches_filter(doc.metadata, filter_metadata):
+                                    continue
+
+                            results.append(SearchResult(
+                                document=doc,
+                                score=float(distances[0][i]),
+                                metadata=doc.metadata
+                            ))
+
+                return results
+
         except Exception as e:
             logger.error(f"Search failed: {e}")
             return []
@@ -513,25 +559,41 @@ class FAISSVectorStore(BaseVectorStore):
     
     def count(self) -> int:
         """Get document count."""
-        return len(self._documents)
+        with self._lock:
+            return len(self._documents)
     
     def _save_index(self) -> bool:
-        """Save index to disk."""
+        """Save index to disk.
+
+        Writes each file to a sibling .tmp path and os.replace()s it into
+        place, rather than writing the live path directly: a reader (or a
+        concurrent save) opening index.faiss mid-write would otherwise see a
+        truncated, unreadable file. os.replace is atomic on both POSIX and
+        Windows, so the live file is always either the old or the new
+        complete version, never a partial one.
+        """
         try:
             import json
             import faiss
             from dataclasses import asdict
 
             os.makedirs(self.index_path, exist_ok=True)
-            faiss.write_index(self.index, f"{self.index_path}/index.faiss")
+
+            index_path = f"{self.index_path}/index.faiss"
+            index_tmp = f"{index_path}.tmp"
+            faiss.write_index(self.index, index_tmp)
+            os.replace(index_tmp, index_path)
 
             payload = {
                 "doc_ids": list(self._doc_ids),
                 "documents": {k: asdict(d) for k, d in self._documents.items()},
             }
-            with open(f"{self.index_path}/documents.json", 'w', encoding='utf-8') as f:
+            docs_path = f"{self.index_path}/documents.json"
+            docs_tmp = f"{docs_path}.tmp"
+            with open(docs_tmp, 'w', encoding='utf-8') as f:
                 json.dump(payload, f)
-            
+            os.replace(docs_tmp, docs_path)
+
             return True
         except Exception as e:
             logger.error(f"Failed to save index: {e}")

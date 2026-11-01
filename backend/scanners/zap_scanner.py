@@ -83,6 +83,15 @@ class ZAPScanner(ScannerAdapter):
         """Check if ZAP is available on the system."""
         return self._get_binary() is not None
 
+    @staticmethod
+    def _pick_free_port() -> int:
+        """An ephemeral port free at this instant, for a daemon this adapter starts."""
+        import socket
+
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(("127.0.0.1", 0))
+            return s.getsockname()[1]
+
     def scan(self, target: str) -> list[ScanVulnerability]:
         """Run an OWASP ZAP scan against the target.
 
@@ -253,10 +262,11 @@ class ZAPScanner(ScannerAdapter):
             finally:
                 self._stop_daemon()
 
-        # tempfile.gettempdir() rather than a hardcoded /tmp: this project is
-        # Windows-primary, where /tmp does not exist, so the report was
-        # previously never written or read back.
-        report_path = os.path.join(tempfile.gettempdir(), "zap_report.json")
+        # mkstemp(), not a fixed filename: a fixed name under the shared temp
+        # directory let two concurrent ZAP scans overwrite or read each
+        # other's report.
+        fd, report_path = tempfile.mkstemp(prefix="zap_report_", suffix=".json")
+        os.close(fd)
 
         cmd = [
             binary,
@@ -284,6 +294,11 @@ class ZAPScanner(ScannerAdapter):
         except (FileNotFoundError, json.JSONDecodeError) as e:
             logger.warning("ZAP produced no readable report: %s", e)
             return []
+        finally:
+            try:
+                os.unlink(report_path)
+            except OSError:
+                pass
 
     def _start_daemon(self) -> bool:
         """Start ZAP in daemon mode so the REST API becomes usable.
@@ -297,6 +312,15 @@ class ZAPScanner(ScannerAdapter):
         binary = self._get_binary()
         if not binary:
             return False
+
+        # A port picked per instance, not the hardcoded class default: two
+        # scans that both fall through to launching their own daemon would
+        # otherwise race to bind the same port, and one daemon would fail to
+        # start (or worse, one scan would end up talking to the other's
+        # daemon). self.API_PORT shadows the class attribute for the rest of
+        # this scanner instance's life, so _scan_via_api below talks to the
+        # same daemon this just launched.
+        self.API_PORT = self._pick_free_port()
 
         cmd = [
             binary,

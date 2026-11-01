@@ -95,14 +95,15 @@ class OrchestratorService:
                     # tools over several minutes, and a hostname validated at
                     # submission can be repointed at an internal address by
                     # its own DNS before a later scanner's turn comes up. For
-                    # nmap - the one tool here with no need for a hostname
-                    # (no Host header or SNI involved) - the pinned IP is
-                    # used directly so there is no second resolution step
+                    # the scanners with no need for a hostname - nmap's raw
+                    # port/service probes and OpenVAS's GMP target, neither
+                    # of which involves a Host header or SNI - the pinned IP
+                    # is used directly so there is no second resolution step
                     # left for an attacker to win a race against at all.
                     from services.target_validation import resolve_target
 
                     host, ip = await asyncio.to_thread(resolve_target, target)
-                    scan_target = ip if name == "nmap" else host
+                    scan_target = ip if name in ("nmap", "openvas") else host
 
                     results = await asyncio.wait_for(
                         loop.run_in_executor(self.executor, _run_scanner_sync, scanner, scan_target),

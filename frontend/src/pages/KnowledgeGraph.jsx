@@ -3,6 +3,7 @@ import { Search, AlertTriangle, ExternalLink, Info, Crosshair } from 'lucide-rea
 import { getGraphStats, getGraphChain, searchGraph } from '../api/client'
 import { Badge, Button, Callout, Card, CardHeader, Input, PageHeader } from '../components/ui'
 import { SkeletonRegion, SkeletonCard } from '../components/Skeleton'
+import { sanitizeUrl } from '../utils/sanitize'
 
 // Lanes rather than a force-directed graph: the relationship is a fixed
 // four-stage walk, and a hairball hides exactly the structure worth showing.
@@ -169,9 +170,9 @@ python scripts/fetch_datasets.py{'\n'}python scripts/build_knowledge_graph.py
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="font-mono text-xs font-medium">{item.id}</span>
                               {item.severity && <span className="text-2xs text-ink-subtle">{item.severity}</span>}
-                              {item.url && (
+                              {item.url && sanitizeUrl(item.url) && (
                                 <a
-                                  href={item.url}
+                                  href={sanitizeUrl(item.url)}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   aria-label={`${item.id} on MITRE`}
