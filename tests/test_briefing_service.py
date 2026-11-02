@@ -35,6 +35,29 @@ def test_generation_stores_ready_payload(monkeypatch):
     assert stored["explanation"] == "All clear."
 
 
+def test_error_payload_with_explanation_is_failed(monkeypatch):
+    # explain_scan reports an LLM outage by returning an error AND an
+    # explanation sentence; that used to be stored as a ready briefing.
+    scan_id = _scan()
+
+    class OfflineEngine:
+        def explain_scan(self, *args, **kwargs):
+            return {
+                "explanation": "The scan results could not be explained ...",
+                "finding_count": 3,
+                "error": "GROQ_API_KEY is not set",
+            }
+
+    import services.rag_engine as rag_module
+
+    monkeypatch.setattr(rag_module, "rag_engine", OfflineEngine())
+    briefing_service.generate_briefing(scan_id)
+
+    stored = briefing_service.get_briefing(scan_id)
+    assert stored["status"] == "failed"
+    assert "GROQ_API_KEY" in stored["error"]
+
+
 def test_generation_failure_is_recorded(monkeypatch):
     scan_id = _scan()
 
