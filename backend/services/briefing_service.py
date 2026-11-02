@@ -62,8 +62,11 @@ def generate_briefing(scan_id: int) -> None:
     finally:
         db.close()
 
-    if payload.get("error") and not payload.get("explanation"):
+    # explain_scan always fills "explanation", even on failure (it carries the
+    # error sentence), so "error" alone decides the outcome. Checking for an
+    # empty explanation stored every LLM failure as a ready briefing.
+    if payload.get("error"):
         _set(scan_id, status="failed", payload=payload, error=payload["error"])
     else:
         _set(scan_id, status="ready", payload=payload, error=None)
-    logger.info("Briefing for scan %d stored (%s)", scan_id, "ready" if payload.get("explanation") else "failed")
+    logger.info("Briefing for scan %d stored (%s)", scan_id, "failed" if payload.get("error") else "ready")

@@ -8,6 +8,7 @@ import os
 import sys
 
 from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -23,7 +24,8 @@ class LinkRequest(BaseModel):
 
 @router.post("/sanitize/link")
 async def sanitize_link(body: LinkRequest):
-    return sanitizer.analyze_link(body.url, trace=body.trace)
+    # The redirect trace makes blocking network calls; keep them off the loop.
+    return await run_in_threadpool(sanitizer.analyze_link, body.url, trace=body.trace)
 
 
 @router.post("/sanitize/file")
@@ -37,4 +39,4 @@ async def sanitize_file(request: Request, filename: str = Query(..., min_length=
         if total > sanitizer.MAX_FILE_BYTES:
             raise HTTPException(status_code=413, detail="File too large")
         chunks.append(chunk)
-    return sanitizer.analyze_file(filename, b"".join(chunks))
+    return await run_in_threadpool(sanitizer.analyze_file, filename, b"".join(chunks))
