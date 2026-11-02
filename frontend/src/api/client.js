@@ -1,9 +1,19 @@
 import axios from 'axios'
 
+// Locally the Vite dev server proxies /api to port 8000. A deployed frontend
+// (e.g. on Vercel) has no proxy, so VITE_API_URL names the backend origin,
+// such as an ngrok or Cloud Run URL, without a trailing /api.
+const API_ORIGIN = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '')
+
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: `${API_ORIGIN}/api`,
   timeout: 300000,
-  headers: { 'Content-Type': 'application/json' },
+  headers: {
+    'Content-Type': 'application/json',
+    // ngrok's free tier serves an HTML warning page instead of the API unless
+    // this header is present; it is ignored by every other host.
+    'ngrok-skip-browser-warning': 'true',
+  },
 })
 
 api.interceptors.request.use((config) => {
