@@ -89,8 +89,23 @@ class OrchestratorService:
                         loop.run_in_executor(self.executor, _run_scanner_sync, scanner, target),
                         timeout=SCANNER_WALL_CLOCK_SECONDS,
                     )
-                    if isinstance(results, list):
+                    if isinstance(results, list) and results:
                         all_vulns.extend(results)
+                    else:
+                        # An empty result left no trace of the tool at all, so
+                        # a clean run was indistinguishable from one that never
+                        # started. Record that it ran and found nothing.
+                        all_vulns.append(ScanVulnerability(
+                            severity="INFO",
+                            description=(
+                                f"{name} ran against '{target}' and reported no "
+                                f"findings. This means nothing in its checks "
+                                f"matched, not that the target is secure."
+                            ),
+                            affected_host=target,
+                            source_scanner=name,
+                            raw_output={"type": "no_findings"},
+                        ))
                 except asyncio.TimeoutError:
                     logger.warning("Scanner %s exceeded %ss and was abandoned", name, SCANNER_WALL_CLOCK_SECONDS)
                     all_vulns.extend(scanner._no_result(target))
