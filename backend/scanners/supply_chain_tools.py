@@ -144,7 +144,7 @@ class TrivyScanner(ArtefactScannerMixin, CLIScannerAdapter):
                              f"consider removing or replacing the dependency."
                     ),
                     references=(vuln.get("References") or [])[:5],
-                    exploit_available=severity in ("CRITICAL", "HIGH"),
+                    exploit_available=False,  # version match, not evidence of an exploit
                     source_scanner=self.name,
                     raw_output={
                         "type": "trivy",
@@ -306,7 +306,10 @@ class OSVScanner(ArtefactScannerMixin, CLIScannerAdapter):
             or ""
         )
         if severity:
-            return severity.upper()
+            severity = severity.upper()
+            # GitHub advisories say MODERATE. Passed through as-is it matched
+            # no band, scored CVSS 0, and dropped out of every severity count.
+            return {"MODERATE": "MEDIUM", "IMPORTANT": "HIGH"}.get(severity, severity)
         # No severity published: MEDIUM avoids both silently hiding it and
         # overstating it.
         return "MEDIUM"
@@ -362,9 +365,18 @@ class GrypeScanner(ArtefactScannerMixin, CLIScannerAdapter):
             package_version = artifact.get("version", "")
             fix_versions = (vulnerability.get("fix") or {}).get("versions") or []
 
+            # A GHSA-primary match carries its CVE under relatedVulnerabilities;
+            # reading only the primary id dropped the CVE for every npm advisory.
+            candidate_ids = [vulnerability.get("id") or ""] + [
+                (related or {}).get("id") or ""
+                for related in match.get("relatedVulnerabilities", []) or []
+            ]
+            cve_id = next(
+                (i.upper() for i in candidate_ids if i.upper().startswith("CVE-")), None
+            )
+
             findings.append(ScanVulnerability(
-                cve_id=(vulnerability.get("id") or "").upper()
-                if (vulnerability.get("id") or "").upper().startswith("CVE-") else None,
+                cve_id=cve_id,
                 cvss_score=cvss_score,
                 severity=self.parse_severity(cvss_score) if cvss_score else severity,
                 description=(
@@ -379,7 +391,9 @@ class GrypeScanner(ArtefactScannerMixin, CLIScannerAdapter):
                     else f"No fix is currently published for {package_name}."
                 ),
                 references=(vulnerability.get("urls") or [])[:5],
-                exploit_available=severity in ("CRITICAL", "HIGH"),
+                # Severity is not evidence of a public exploit; KEV enrichment
+                # is what establishes exploitation, so do not assert it here.
+                exploit_available=False,
                 source_scanner=self.name,
                 raw_output={
                     "type": "grype",

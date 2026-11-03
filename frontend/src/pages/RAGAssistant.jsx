@@ -94,6 +94,27 @@ export default function RAGAssistant() {
         </Callout>
       )}
 
+      {/* The sidebar below is desktop-only, so narrower windows get a picker;
+          without it past conversations were unreachable under 1024px. */}
+      {sessions.length > 0 && (
+        <div className="lg:hidden mb-3 flex items-center gap-2">
+          <label htmlFor="session-picker" className="text-xs text-ink-subtle flex-shrink-0">Conversation</label>
+          <select
+            id="session-picker"
+            value={sessions.some((s) => s.session_id === sessionId) ? sessionId : ''}
+            onChange={(e) => (e.target.value ? loadSession(e.target.value) : clearChat())}
+            className="flex-1 min-w-0 h-9 rounded-ctl border border-line bg-surface px-2 text-[13px]"
+          >
+            <option value="">New conversation</option>
+            {sessions.map((s) => (
+              <option key={s.session_id} value={s.session_id}>
+                {sessionLabel(s)} · {s.message_count} messages
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       <div className="flex gap-4 flex-1 min-h-[480px]">
         {sessions.length > 0 && (
           <Card as="aside" className="hidden lg:flex w-60 flex-shrink-0 flex-col overflow-hidden" aria-label="Past conversations">

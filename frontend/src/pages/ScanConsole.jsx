@@ -114,9 +114,13 @@ export default function ScanConsole() {
 
   const pollScan = (scanId) => {
     if (pollRef.current) clearInterval(pollRef.current)
+    // One failed poll used to stop polling for good, leaving a running scan
+    // frozen on screen. Only give up after repeated consecutive failures.
+    let failures = 0
     pollRef.current = setInterval(async () => {
       try {
         const { data } = await getScanResults(scanId)
+        failures = 0
         setCurrentScan(data.scan)
         setVulnerabilities(data.vulnerabilities)
         loadHistory()
@@ -126,10 +130,14 @@ export default function ScanConsole() {
           setScanning(false)
           if (data.scan.status === 'completed') loadAttackPaths(scanId)
         }
-      } catch {
-        clearInterval(pollRef.current)
-        pollRef.current = null
-        setScanning(false)
+      } catch (err) {
+        failures += 1
+        if (failures >= 10) {
+          clearInterval(pollRef.current)
+          pollRef.current = null
+          setScanning(false)
+          setLoadError({ id: scanId, message: err.message || 'Lost contact with the backend while the scan was running' })
+        }
       }
     }, 2000)
   }

@@ -4,6 +4,7 @@ import importlib.util
 import sys
 import os
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -36,15 +37,21 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
     """Chat with the RAG vulnerability assistant."""
     session_id = request.session_id or str(uuid.uuid4())
 
-    _store_message(db, session_id, "user", request.message)
-
     # Resolved per request so Settings toggles take effect immediately.
+    # The query blocks on retrieval and LLM calls for up to a minute or more;
+    # run inline in this async handler it froze the whole event loop, so scan
+    # polling, history and health checks all hung while one chat was answered.
     query_obj = RAGQuery(question=request.message, session_id=session_id)
-    result = get_pipeline().query(query_obj)
-    
-    # If the response indicates an error, log it
-    if hasattr(result, "metadata") and result.metadata.get("error"):
-        logger.error(f"RAG query returned error: {result.metadata['error']}")
+    result = await run_in_threadpool(get_pipeline().query, query_obj)
+
+    # A failed query is reported as an error rather than stored as if it were
+    # the assistant's answer, which left error text in the chat history.
+    error = (getattr(result, "metadata", None) or {}).get("error")
+    if error:
+        logger.error("RAG query returned error: %s", error)
+        raise HTTPException(status_code=503, detail=result.answer)
+
+    _store_message(db, session_id, "user", request.message)
 
     answer = result.answer
     # The new pipeline returns a list of dictionaries with 'content', 'score', and 'metadata', 
@@ -132,7 +139,7 @@ async def index_cves():
         logger.exception("Failed to load seed_cve_data")
         raise HTTPException(status_code=500, detail="Failed to load indexing script")
 
-    count = module.seed_data()
+    count = await run_in_threadpool(module.seed_data)
     return {"message": f"Indexed {count} CVE entries", "count": count}
 
 

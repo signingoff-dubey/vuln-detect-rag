@@ -16,6 +16,7 @@ severity and no CVE ID, which the rest of the pipeline already handles.
 import logging
 import os
 import tempfile
+import uuid
 
 from scanners.base import ScanVulnerability
 from scanners.cli_base import CLIScannerAdapter
@@ -67,7 +68,7 @@ class NiktoScanner(CLIScannerAdapter):
             logger.error("Nikto: rejected unsafe target %r", target)
             return []
 
-        report_path = os.path.join(tempfile.gettempdir(), f"nikto_{os.getpid()}.json")
+        report_path = os.path.join(tempfile.gettempdir(), f"nikto_{os.getpid()}_{uuid.uuid4().hex}.json")
         host = target.replace("https://", "").replace("http://", "").split("/")[0]
 
         cmd = [
@@ -98,6 +99,16 @@ class NiktoScanner(CLIScannerAdapter):
                 pass
 
         if not data:
+            if result.returncode != 0:
+                # Nikto exits at once when its script is missing (antivirus
+                # tools commonly quarantine nikto.pl) or Perl fails to load
+                # it. Report that rather than letting it pass as a clean run.
+                stderr = (result.stderr or "").strip()
+                logger.warning("Nikto failed (exit %s): %s", result.returncode, stderr[:300])
+                notes = self._no_result(target)
+                notes[0].description += f" Nikto exited with code {result.returncode}: {stderr[:200]}"
+                notes[0].raw_output["stderr"] = stderr[:2000]
+                return notes
             logger.info("Nikto returned no parseable findings for %s", target)
             return []
 
@@ -181,7 +192,7 @@ class TLSScanner(CLIScannerAdapter):
 
     def _scan_sslyze(self, binary: str, target: str) -> list[ScanVulnerability]:
         """Run sslyze and interpret its JSON."""
-        report_path = os.path.join(tempfile.gettempdir(), f"sslyze_{os.getpid()}.json")
+        report_path = os.path.join(tempfile.gettempdir(), f"sslyze_{os.getpid()}_{uuid.uuid4().hex}.json")
         result = self.run([binary, "--json_out", report_path, f"{target}:443"])
         if result is None:
             return []
@@ -256,7 +267,7 @@ class TLSScanner(CLIScannerAdapter):
 
     def _scan_testssl(self, binary: str, target: str) -> list[ScanVulnerability]:
         """Run testssl.sh and interpret its JSON findings."""
-        report_path = os.path.join(tempfile.gettempdir(), f"testssl_{os.getpid()}.json")
+        report_path = os.path.join(tempfile.gettempdir(), f"testssl_{os.getpid()}_{uuid.uuid4().hex}.json")
         result = self.run([
             binary, "--jsonfile", report_path, "--quiet",
             "--severity", "LOW", target,

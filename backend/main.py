@@ -110,7 +110,9 @@ app.add_middleware(
     allow_origins=settings.CORS_ORIGINS,
     allow_credentials="*" not in settings.CORS_ORIGINS,
     allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization", "Accept", "X-API-Key"],
+    # ngrok-skip-browser-warning is sent by the frontend on every request; a
+    # cross-origin deployment fails CORS preflight unless it is allowed here.
+    allow_headers=["Content-Type", "Authorization", "Accept", "X-API-Key", "ngrok-skip-browser-warning"],
 )
 
 
@@ -225,7 +227,7 @@ async def root():
 
 
 @app.get("/api/health")
-async def health():
+def health():
     from services.orchestrator import SCANNER_MAP
 
     # Availability is probed per scanner so the UI can distinguish a tool that
@@ -259,7 +261,7 @@ async def health():
 
 
 @app.get("/api/llm-status")
-async def llm_status():
+def llm_status():
     """Report which LLM backends are usable and which one will serve requests.
 
     Covers every provider rather than only Ollama, so the UI can tell the user
@@ -357,15 +359,23 @@ def _save_provider_prefs(disabled) -> None:
     """Persist provider toggles."""
     import json
 
+    # Merge rather than overwrite: the same file holds the RAG toggle, and
+    # writing only "disabled" silently reset retrieval on the next restart.
+    try:
+        with open(PROVIDER_PREFS_FILE, "r", encoding="utf-8") as handle:
+            prefs = json.load(handle)
+    except Exception:
+        prefs = {}
+    prefs["disabled"] = sorted(disabled)
     try:
         with open(PROVIDER_PREFS_FILE, "w", encoding="utf-8") as handle:
-            json.dump({"disabled": sorted(disabled)}, handle)
+            json.dump(prefs, handle)
     except Exception:
         logger.exception("Could not save provider preferences")
 
 
 @app.get("/api/providers")
-async def list_providers():
+def list_providers():
     """List every LLM provider with its configuration and enabled state."""
     from rag_assistant.llm_config import LLMFactory
 
@@ -432,7 +442,7 @@ async def list_providers():
 
 
 @app.post("/api/providers/{provider}")
-async def toggle_provider(provider: str, enabled: bool = True):
+def toggle_provider(provider: str, enabled: bool = True):
     """Enable or disable one LLM provider at runtime.
 
     Exists so a research run can isolate a single backend — comparing Groq
@@ -459,7 +469,7 @@ async def toggle_provider(provider: str, enabled: bool = True):
 
 
 @app.get("/api/providers/{provider}/models")
-async def list_provider_models(provider: str):
+def list_provider_models(provider: str):
     """List the models a provider currently offers.
 
     Lets the UI offer a real choice rather than a hardcoded list that goes
@@ -486,7 +496,7 @@ async def list_provider_models(provider: str):
 
 
 @app.post("/api/providers/{provider}/model")
-async def set_provider_model(provider: str, model: str):
+def set_provider_model(provider: str, model: str):
     """Pin which model a provider should use.
 
     Model choice is the main independent variable in an LLM comparison, so it
@@ -513,7 +523,7 @@ async def set_provider_model(provider: str, model: str):
 
 
 @app.get("/api/rag-config")
-async def get_rag_config():
+def get_rag_config():
     """Report whether retrieval is enabled, and the corpus it would search."""
     from rag_assistant.chains.rag_chain import RAGPipeline
 
@@ -535,7 +545,7 @@ async def get_rag_config():
 
 
 @app.post("/api/rag-config")
-async def set_rag_config(enabled: bool = True):
+def set_rag_config(enabled: bool = True):
     """Turn retrieval on or off.
 
     With retrieval off the assistant answers purely from the model's own
