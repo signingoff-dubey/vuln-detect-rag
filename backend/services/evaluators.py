@@ -140,10 +140,16 @@ class EvaluatorService:
     #: refusal and an exact-phrase list scored one of them as a hallucination.
     _DECLINE = re.compile(
         r"(?:do(?:es)?|did)\s+not\s+(?:contain|include|have|mention|cover|list|provide)"
+        r"|(?:is|are|was|were)\s+(?:\w+\s+){0,2}?not\s+"
+        r"(?:mentioned|listed|described|documented|specified|provided|given|"
+        r"available|present|found|included|covered)"
+        r"|neither\b[^.]{0,120}?\bnor\b"
         r"|no\s+(?:information|entry|entries|matching|relevant|record|data|details)"
         r"|not\s+(?:available|present|found|in\s+the\s+provided|included)"
+        r"|(?:is|are)\s+missing"
+        r"|lacks?\s+(?:any\s+)?(?:information|details|reference)"
         r"|un(?:available|known)"
-        r"|(?:cannot|can't|unable\s+to)\s+(?:find|locate|answer)"
+        r"|(?:cannot|can't|unable\s+to)\s+(?:find|locate|answer|provide)"
         r"|NOTHING_RELEVANT",
         re.IGNORECASE)
 
@@ -154,11 +160,17 @@ class EvaluatorService:
 
     #: The subject being described rather than declined: "CVE-X is a ...",
     #: "CVE-X affects ...". This is what a parametric-memory answer looks like.
-    _DESCRIBES = re.compile(
-        r"CVE-\d{4}-\d{4,}\s*(?:\([^)]{0,40}\))?\s*"
+    #: The subject being described rather than declined: "CVE-X is a ...".
+    #: The negation guard tolerates up to two intervening words, because
+    #: "CVE-X is also not available" is a refusal and an immediate-`not`
+    #: lookahead read it as a description.
+    _DESCRIBES_TAIL = (
+        r"\s*(?:\([^)]{0,40}\))?\s*"
         r"(?:is|was|are|were|affects?|allows?|enables?|permits?|exists?)\b"
-        r"(?!\s+(?:not\b|un(?:available|known)|available|absent|missing))",
-        re.IGNORECASE)
+        r"(?!(?:\s+\w+){0,2}\s+(?:not\b|never\b|un(?:available|known)|"
+        r"available|absent|missing|mentioned|listed|documented))")
+    _DESCRIBES = re.compile(r"CVE-\d{4}-\d{4,}" + _DESCRIBES_TAIL,
+                            re.IGNORECASE)
 
     def _states_a_score(self, text: str) -> bool:
         """Whether the answer actually asserts a CVSS score.
@@ -176,7 +188,23 @@ class EvaluatorService:
                 continue
         return False
 
-    def evaluate_refusal(self, answers: list[str]) -> EvalResult:
+    def _describes_subject(self, text: str, subject: str | None) -> bool:
+        """Does the answer describe the CVE it was asked about?
+
+        Without a subject this asks whether the answer describes *any*
+        identifier, which mis-scores an answer that declines on the absent CVE
+        and then discusses a different one that really is in the corpus. That
+        is an irrelevant answer, not a fabricated one, and the two should not
+        share a bucket.
+        """
+        if not subject:
+            return bool(self._DESCRIBES.search(text))
+        pattern = re.compile(re.escape(subject) + self._DESCRIBES_TAIL,
+                             re.IGNORECASE)
+        return bool(pattern.search(text))
+
+    def evaluate_refusal(self, answers: list[str],
+                         subjects: list[str] | None = None) -> EvalResult:
         """Measure correct refusal on questions the corpus cannot answer.
 
         Run against control questions whose subject is deliberately absent from
@@ -200,21 +228,33 @@ class EvaluatorService:
 
         refused = 0
         hedged_but_answered = 0
-        for raw in answers:
+        answered_outright = 0
+        subject_list = list(subjects or [])
+        for index, raw in enumerate(answers):
             text = _fold(raw or "").strip()
+            subject = (subject_list[index]
+                       if index < len(subject_list) else None)
             declines = bool(self._DECLINE.search(text))
             # Blank out identifiers first: "the CVSS score for
             # CVE-2019-0708 is not given" otherwise matches the CVE's
             # year as though it were a score of 20.
             masked = _IDENT.sub(" CVE-ID ", text)
-            asserts = self._states_a_score(masked) or bool(
-                self._DESCRIBES.search(text))
+            asserts = (self._states_a_score(masked)
+                       or self._describes_subject(text, subject))
             if declines and not asserts:
                 refused += 1
             elif declines and asserts:
                 # Hedged and answered anyway -- the failure mode the old
                 # substring test could not see.
                 hedged_but_answered += 1
+            else:
+                # No decline in any phrasing this pattern knows. That is not a
+                # refusal even when no identifier is named: the one control
+                # both arms failed states an attack vector, complexity and
+                # privilege requirement for an absent CVE without ever
+                # naming it, so a test keyed on the identifier cannot see it
+                # and a fall-through to "refused" would swallow it.
+                answered_outright += 1
 
         total = len(answers)
         return EvalResult(
@@ -224,6 +264,7 @@ class EvaluatorService:
                 "correct_refusals": refused,
                 "hallucinated_answers": total - refused,
                 "hedged_but_answered": hedged_but_answered,
+                "answered_outright": answered_outright,
                 "control_questions": total,
             },
         )

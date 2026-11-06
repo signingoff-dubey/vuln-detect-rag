@@ -22,10 +22,11 @@ Dated 2026-08-27. Every number below is measured, not estimated.
 
 ## Summary
 
-The 200-CVE evaluation was run, audited, and re-run three times. Nine defects
-were found. Four were in the product, five were in the measurement harness. The
-headline efficiency claim survived every correction and got stronger; four
-quality claims moved, and one safety claim was found to be false.
+The 200-CVE evaluation was run, audited, and re-run three times. Eleven defects
+were found: four in the product, five in the measurement harness, and two in the
+claims made from correct measurements. The headline efficiency claim survived
+every correction and got stronger; five quality claims moved, and two safety
+claims were found to be false.
 
 | | Before the audit | After |
 |---|---|---|
@@ -35,7 +36,9 @@ quality claims moved, and one safety claim was found to be false.
 | CVE fidelity | 0.9875 | **1.0000** |
 | Citation rate | 0.2675 | **0.8475** |
 | Grounding support, non-vacuous | 0.9260 | **0.9905** |
-| Genuine refusals on absent-CVE controls | 2 / 5 | **5 / 5** |
+| Genuine refusals on absent-CVE controls | 2 / 5 | **5 / 5** (both arms, model-mediated) |
+| Citation rate, broadcast arm | 0.8475 (stale metric) | **0.8650** |
+| ROUGE gap, same-model subset | -0.019 | **+0.0095** |
 | Queries merging 2+ shard extracts | 0 | **230 (57.5%)** |
 
 ---
@@ -50,7 +53,7 @@ Numbers that were live in the README and are now corrected.
 | Peak-load reduction 5.3x | 9.0x | Measured at 200 CVEs across 405 paired queries |
 | Latency 5.9x faster | 2.0x on medians | The 5.9x was a mean inflated by a censored record; the gap also narrows with corpus size |
 | Grounding support 0.9722 | 0.9905 non-vacuous | Zero-claim answers were scored 1.0 — a vacuous pass |
-| Citation rate 0.2675 | 0.8475 | The low figure was the empty-evidence defect, not a property of sharding |
+| Citation rate 0.2675 | 0.8475 sharded, 0.8650 broadcast | The low figure was the empty-evidence defect. The two arms were later reported as tied at 0.8475; that was a coincidence between a stale metric and a fresh one — see defect 10 |
 | Fabricated CVE IDs: 7 | 0 | All seven came from queries that reached the model with no evidence |
 | "Refusals stayed perfect, zero hallucinated answers" | Was **2/5** when written; now genuinely 5/5 | The refusal metric was matching hedge phrases, not judging content |
 | "Sharding produces thin answers — thinness measured twice" | Withdrawn | The explanation was wrong. 63% of answers were generated with no evidence at all |
@@ -166,7 +169,26 @@ the checkpoint saved the run.
 non-empty, tolerate an error result in the n-gram lookups, and report excluded
 answers instead of passing them silently.
 
-A tenth issue was cosmetic but biased: the citation-rate regex matched only
+**10. Citation rate was compared across a metric change.** The broadcast arm's
+stored `citation_rate` of 0.8475 is its **ASCII-only** rate, written before the
+full-width `【Doc N】` fix below; the sharded arm's 0.8475 is its **combined**
+rate, written after. Both evaluate to 339/400 by coincidence, which was
+published as the two arms being "identical to four decimal places" and read as
+evidence of quality equivalence. Recomputed with the current evaluator over the
+same stored answers: broadcast 0.8650, sharded 0.8475.
+
+*Status:* corrected here, in the README and in the paper. The stored metric
+block in `eval_200_full.json` still holds the pre-fix value and will clear on
+the next regeneration.
+
+**11. The ROUGE and citation deltas were attributed to sharding.** Both were
+the provider substituting a smaller model under throttling. Stratifying on the
+reduce model separates the effects and reverses both deltas; see above.
+
+*Status:* corrected. The correction strengthens the result rather than weakening
+it, which is why it is worth stating plainly that the original reading was wrong.
+
+A twelfth issue was cosmetic but biased: the citation-rate regex matched only
 ASCII `[Doc N]`, while groq's gpt-oss models cite as `【Doc 1】` and write
 identifiers with non-breaking hyphens. It was undercounting one provider's
 citations specifically.
@@ -202,23 +224,29 @@ credits exist.
 ## What the evaluation now shows
 
 Sharding is a **large, reproducible efficiency win at no measurable cost in
-grounding**. It is not an improvement in answer quality, and the data does not
-support claiming one:
+grounding**, and on the subset where model rotation is controlled it is a
+quality win as well:
 
-- Citation rate is identical between the arms to four decimal places.
-- Grounding support differs by 0.0014.
+- Grounding support differs by 0.0014 over all 400 answerable questions.
 - Both arms refuse all five absent-CVE controls with zero hallucinated answers.
 - Sharding fabricates 0 CVE identifiers against broadcast's 2, out of 400 — too
   small to claim an effect from.
+- Two measures favour broadcast over all 400: citation rate 0.8650 vs 0.8475
+  and ROUGE 0.2092 vs 0.1914. **Both reverse** on the 232 queries where one
+  model wrote every sharded answer — 0.9828 vs 0.8664 citation rate, 0.2195 vs
+  0.2099 ROUGE, 0.9943 vs 0.9916 support. The pooled remainder scores 0.1526
+  ROUGE and 0.6607 citation rate, so the substituted models are what those two
+  deltas were measuring. Run `scripts/model_rotation_subset.py` to reproduce.
 
 Fabrication was already near the floor once retrieval worked, so this question
 set cannot distinguish a reading strategy robust to fabrication pressure from
 one never tested under it.
 
-One property is new and is architectural rather than measured: when every shard
-reports no relevant evidence and none failed to be read, **the sharded path
-refuses without calling a model at all**. Both arms score 5/5 on the controls;
-only one of them scores 5/5 by construction.
+The deterministic refusal path is **not** demonstrated by this run. It fired on
+five queries, all of them answerable ones where retrieval had missed, and on
+none of the five controls — which both arms declined through a model, three of
+them by echoing the bare marker. Both arms score 5/5; neither does so by
+construction here. Treat it as a designed property this corpus does not test.
 
 ---
 
@@ -235,10 +263,16 @@ only one of them scores 5/5 by construction.
 
 ## Known limitations
 
-- **Model rotation persists.** 130 of 405 sharded records ran on a smaller
-  model that groq rotated to under throttling. Peak-token load is dominated by
-  prompt size and is unaffected; answer-quality deltas between the arms are not
-  cleanly attributable to the reading strategy alone.
+- **Model rotation persists.** 168 of the 400 answerable sharded answers were
+  not written by the modal reduce model — 163 by a substitute, 5 by no model at
+  all. (The figure previously given here as "130 of 405" does not reproduce
+  under any clean definition.) Peak-token load is dominated by prompt size and is
+  unaffected, and the same-model subset shows the quality comparison survives
+  too; what it cannot rule out is a confound with provider load itself, since
+  which model answered is a function of how throttled the provider was.
+- **The deterministic refusal path is untested.** It never fired on a control
+  question in this run. Demonstrating it needs a question set that drives every
+  shard to the no-content marker under adversarial pressure.
 - **Stored `unsupported_scores` are stale.** Records written before defect 4 was
   fixed keep their values — 2 in the sharded arm, 5 in the broadcast arm. All
   seven are the parse artefact; none is a real fabrication. They will clear on

@@ -682,12 +682,16 @@ each of them.
 | Fell back to a single call | 7 | — | |
 | CVE fidelity | **1.0000** | 0.9950 | |
 | Fabricated CVE IDs (of 400) | **0** | 2 | |
-| Citation rate | 0.8475 | 0.8475 | tied |
+| Citation rate | 0.8475 | **0.8650** | |
 | Grounding support | 0.9914 | 0.9900 | |
 | Grounding support, non-vacuous | 0.9905 | 0.9897 | |
 | Correct refusals (of 5) | **5** | **5** | tied |
 | Hallucinated control answers | **0** | **0** | tied |
 | ROUGE (surface overlap) | 0.1914 | 0.2092 | |
+| *same-model subset (n=232)* | | | |
+| Grounding support | **0.9943** | 0.9916 | |
+| Citation rate | **0.9828** | 0.8664 | |
+| ROUGE (surface overlap) | **0.2195** | 0.2099 | |
 | Query failures | 0 | 0 | |
 
 **Peak per-provider load is the result this design exists to produce**, and it
@@ -716,27 +720,44 @@ never synthesising partial evidence from several providers — it was rewriting 
 single extract. At 200 CVEs **the majority of queries merge two or more
 extracts**, which is the behaviour the design describes.
 
-#### Quality is a tie; efficiency is not
+#### Quality: a tie overall, a win once model rotation is controlled
 
-On this corpus sharding neither helps nor hurts answer quality in any way the
-data supports. Citation rate is identical to four decimal places. Grounding
-support differs by 0.0014. Both arms refuse all five absent-CVE controls with
-zero hallucinated answers. Sharding fabricates no CVE identifiers where
-broadcast fabricates two, and 2 of 400 is too small to claim an effect from.
+Grounding support differs by 0.0014. Both arms refuse all five absent-CVE
+controls with zero hallucinated answers. Sharding fabricates no CVE identifiers
+where broadcast fabricates two — 2 of 400, too small to claim an effect from.
+Two measures go against sharding: citation rate 0.8475 against 0.8650, and
+ROUGE 0.1914 against 0.2092.
 
-That is the honest shape of the result: **a large, reproducible efficiency win
-at no measurable cost in grounding**, rather than an improvement in answer
-quality. Fabrication was already near the floor once retrieval worked, so this
-question set cannot distinguish a reading strategy robust to fabrication
-pressure from one never tested under it. A harder set — near-miss identifiers,
-evidence spanning several records, deliberate distractors — is needed for that.
+**Both of those are the provider swapping models, not the reading strategy.**
+Providers rotate across their catalogues when throttled, so only 232 of the 400
+answerable sharded answers were written by the modal reduce model; 163 went to
+a substitute and 5 to no model at all. Stratifying on the model that wrote the
+answer separates the two effects. Across the 232 same-model queries, sharding
+leads the broadcast baseline on grounding support (0.9943 vs 0.9916), citation
+rate (0.9828 vs 0.8664) and ROUGE (0.2195 vs 0.2099) alike — **both negative
+deltas reverse** — while peak load falls 9.4x and all 232 pairs stay below the
+equal-load diagonal. The pooled remainder scores 0.1526 ROUGE and 0.6607
+citation rate, so the substituted models are what those deltas measure.
 
-ROUGE is 0.019 lower under sharding. Since references are drawn from the corpus
-itself, that measures how much source wording survives, and the map step's
-`NOTHING_RELEVANT` filter discards documents rather than paraphrasing them.
-Treat it as a difference in verbosity, not accuracy.
+The subset is selected on which model answered, not at random. The check for
+that is the baseline's own scores across it, which barely move (0.9916 vs
+0.9900 support, 0.8664 vs 0.8650 citation rate) — so it is not a subset of
+easier questions. Reproduce with
+`python scripts/model_rotation_subset.py` (reads the stored records, no API calls).
 
-#### Refusal is deterministic, not a model's decision
+Fabrication was already near the floor once retrieval worked, so this question
+set still cannot distinguish a reading strategy robust to fabrication pressure
+from one never tested under it. A harder set — near-miss identifiers, evidence
+spanning several records, deliberate distractors — is needed for that.
+
+> **Correction.** This section previously read "citation rate is identical to
+> four decimal places." It was not. Broadcast's stored 0.8475 was its
+> **ASCII-only** rate, computed before the full-width `【Doc N】` citation fix;
+> sharding's 0.8475 was its **combined** rate, computed after. Both land on
+> 339/400 by coincidence. Recomputed with the current evaluator, broadcast
+> cites at 0.8650 and sharding at 0.8475.
+
+#### Refusal is deterministic — but this run never exercised it
 
 When every shard reports `NOTHING_RELEVANT` and none failed to be read, the
 sharded path returns a refusal **without calling a model at all**. It costs no
@@ -744,17 +765,41 @@ reduce tokens, cannot be argued out of the refusal, and cannot regress when
 providers rotate to a weaker model. Broadcast has no equivalent point at which
 it knows the evidence was empty.
 
-The distinction matters because it is the difference between a measured
-property and a guaranteed one. Both arms score 5/5 here; only one of them
-scores 5/5 by construction.
+That is what the code does. What the 200-CVE run actually did is narrower, and
+the distinction matters:
+
+```
+control questions:            5
+  structural-skip path:       0
+  model-mediated refusal:     5
+structural-skip fired on:     5 queries — all of them answerable
+```
+
+**The deterministic path never produced a control refusal.** All five controls
+went through `qwen/qwen3.8-27b`, and three of them returned the bare
+`NOTHING_RELEVANT` marker (the leak defect — fixed in code, but these records
+predate the fix). The path fired only where retrieval *missed* on an answerable
+question.
+
+So the 5/5 refusal score is model-mediated in **both** arms. Treat deterministic
+refusal as a designed property that this corpus does not test, not as a
+measured result — demonstrating it needs a question set that drives every shard
+to the no-content marker under adversarial pressure.
+
+> **Correction.** This section previously claimed "only one of them scores 5/5
+> by construction." On this run neither did.
 
 #### Threats to validity
 
 - **Model rotation.** Each provider rotates across its model catalogue when
   throttled, so the two arms are not guaranteed to be served by the same model.
-  130 of 405 sharded records ran on a smaller rotated model. Peak-token load is
-  dominated by prompt size and is unaffected; answer-quality deltas between the
-  arms are **not** cleanly attributable to the reading strategy alone.
+  168 of the 400 answerable sharded answers were not written by the modal reduce
+  model (163 by a substitute, 5 by no model at all; the figure previously given
+  here as "130 of 405" does not reproduce under any clean definition).
+  Peak-token load is dominated by prompt size and is unaffected, and the
+  same-model subset above shows the quality comparison survives too. What that
+  subset cannot rule out is a confound with provider load itself, since which
+  model answered is a function of how throttled the provider was at the time.
 - **Censored latency.** 16 broadcast questions hit the 120-second ensemble
   ceiling. Latency is reported as a median for that reason.
 - **ROUGE is not comparable to the pilot's.** NVD publishes no remediation
